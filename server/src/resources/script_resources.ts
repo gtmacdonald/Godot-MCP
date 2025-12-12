@@ -121,3 +121,97 @@ export function createScriptMetadataResource(getConnection: GetConnection = getG
 }
 
 export const scriptMetadataResource: Resource = createScriptMetadataResource();
+
+/**
+ * Resource template that provides the content of any script by path.
+ */
+export function createScriptContentTemplate(
+  getConnection: GetConnection = getGodotConnection,
+): ResourceTemplate {
+  return {
+    uriTemplate: 'godot/script/{path}',
+    name: 'Godot Script Content (by path)',
+    mimeType: 'text/plain',
+    arguments: [
+      {
+        name: 'path',
+        description: 'Script path (e.g. "res://scripts/player.gd")',
+        required: true,
+        complete: async (value) => {
+          const godot = getConnection();
+          try {
+            const result = await godot.sendCommand('list_project_files', {
+              extensions: ['.gd', '.cs'],
+            });
+            const files: string[] = result?.files ?? [];
+            return {
+              values: files.filter(f => f.includes(value ?? '')),
+            };
+          } catch {
+            return { values: [] };
+          }
+        },
+      },
+    ],
+    async load({ path }: { path: string }) {
+      const godot = getConnection();
+      const result = await godot.sendCommand('get_script', { script_path: path });
+      return {
+        text: result.content ?? '',
+        metadata: {
+          path: result.script_path ?? path,
+          language: path.endsWith('.gd')
+            ? 'gdscript'
+            : path.endsWith('.cs')
+              ? 'csharp'
+              : 'unknown',
+        },
+      };
+    },
+  };
+}
+
+export const scriptContentTemplate: ResourceTemplate = createScriptContentTemplate();
+
+/**
+ * Resource template that provides metadata for any script by path.
+ */
+export function createScriptMetadataTemplate(
+  getConnection: GetConnection = getGodotConnection,
+): ResourceTemplate {
+  return {
+    uriTemplate: 'godot/script/metadata/{path}',
+    name: 'Godot Script Metadata (by path)',
+    mimeType: 'application/json',
+    arguments: [
+      {
+        name: 'path',
+        description: 'Script path (e.g. "res://scripts/player.gd")',
+        required: true,
+        complete: async (value) => {
+          const godot = getConnection();
+          try {
+            const result = await godot.sendCommand('list_project_files', {
+              extensions: ['.gd', '.cs'],
+            });
+            const files: string[] = result?.files ?? [];
+            return {
+              values: files.filter(f => f.includes(value ?? '')),
+            };
+          } catch {
+            return { values: [] };
+          }
+        },
+      },
+    ],
+    async load({ path }: { path: string }) {
+      const godot = getConnection();
+      const result = await godot.sendCommand('get_script_metadata', { path });
+      return {
+        text: JSON.stringify(result),
+      };
+    },
+  };
+}
+
+export const scriptMetadataTemplate: ResourceTemplate = createScriptMetadataTemplate();

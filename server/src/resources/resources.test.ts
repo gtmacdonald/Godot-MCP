@@ -6,6 +6,8 @@ import {
 import {
   createScriptListResource,
   createScriptMetadataResource,
+  createScriptContentTemplate,
+  createScriptMetadataTemplate,
 } from './script_resources.js';
 import {
   createProjectStructureResource,
@@ -64,6 +66,41 @@ describe('resources', () => {
     expect(JSON.parse(out.text)).toEqual({ meta: 1 });
   });
 
+  it('scriptContentTemplate loads specific script by path', async () => {
+    sendCommand.mockResolvedValue({
+      script_path: 'res://scripts/foo.gd',
+      content: 'extends Node',
+    });
+    const tpl = createScriptContentTemplate(getConnection);
+    const out = await tpl.load({ path: 'res://scripts/foo.gd' } as any);
+    expect(sendCommand).toHaveBeenCalledWith('get_script', {
+      script_path: 'res://scripts/foo.gd',
+    });
+    expect(out.text).toContain('extends Node');
+    expect(out.metadata?.path).toBe('res://scripts/foo.gd');
+  });
+
+  it('scriptMetadataTemplate loads metadata by path', async () => {
+    sendCommand.mockResolvedValue({ classes: [] });
+    const tpl = createScriptMetadataTemplate(getConnection);
+    const out = await tpl.load({ path: 'res://scripts/foo.gd' } as any);
+    expect(sendCommand).toHaveBeenCalledWith('get_script_metadata', {
+      path: 'res://scripts/foo.gd',
+    });
+    expect(JSON.parse(out.text)).toEqual({ classes: [] });
+  });
+
+  it('script templates complete from list_project_files', async () => {
+    sendCommand.mockResolvedValue({ files: ['res://scripts/player.gd', 'res://scripts/enemy.gd'] });
+    const tpl = createScriptContentTemplate(getConnection);
+    const arg = tpl.arguments![0];
+    const completed = await arg.complete?.('play');
+    expect(sendCommand).toHaveBeenCalledWith('list_project_files', {
+      extensions: ['.gd', '.cs'],
+    });
+    expect(completed?.values).toEqual(['res://scripts/player.gd']);
+  });
+
   it('project resources call correct commands', async () => {
     sendCommand.mockResolvedValue({ a: 1 });
     const structure = await createProjectStructureResource(getConnection).load();
@@ -89,4 +126,3 @@ describe('resources', () => {
     expect(script.metadata?.script_found).toBe(false);
   });
 });
-

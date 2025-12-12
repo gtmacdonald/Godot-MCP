@@ -13,7 +13,9 @@ import {
 import { 
   scriptResource, 
   scriptListResource,
-  scriptMetadataResource 
+  scriptMetadataResource,
+  scriptContentTemplate,
+  scriptMetadataTemplate
 } from './resources/script_resources.js';
 import { 
   projectStructureResource,
@@ -56,6 +58,10 @@ async function main() {
   server.addResource(sceneStructureResource);
   server.addResource(scriptResource);
   server.addResource(scriptMetadataResource);
+
+  // Resource templates (dynamic resources)
+  server.addResourceTemplate(scriptContentTemplate);
+  server.addResourceTemplate(scriptMetadataTemplate);
 
   // Try to connect to Godot
   try {
