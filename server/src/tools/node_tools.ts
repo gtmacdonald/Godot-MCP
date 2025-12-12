@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getGodotConnection } from '../utils/godot_connection.js';
+import { getGodotConnection, GodotConnection } from '../utils/godot_connection.js';
 import { MCPTool, CommandResult } from '../utils/types.js';
 
 /**
@@ -32,7 +32,10 @@ interface ListNodesParams {
 /**
  * Definition for node tools - operations that manipulate nodes in the scene tree
  */
-export const nodeTools: MCPTool[] = [
+type GetConnection = () => GodotConnection;
+
+export function createNodeTools(getConnection: GetConnection = getGodotConnection): MCPTool[] {
+  return [
   {
     name: 'create_node',
     description: 'Create a new node in the Godot scene tree',
@@ -45,7 +48,7 @@ export const nodeTools: MCPTool[] = [
         .describe('Name for the new node'),
     }),
     execute: async ({ parent_path, node_type, node_name }: CreateNodeParams): Promise<string> => {
-      const godot = getGodotConnection();
+      const godot = getConnection();
       
       try {
         const result = await godot.sendCommand<CommandResult>('create_node', {
@@ -69,7 +72,7 @@ export const nodeTools: MCPTool[] = [
         .describe('Path to the node to delete (e.g. "/root/MainScene/Player")'),
     }),
     execute: async ({ node_path }: DeleteNodeParams): Promise<string> => {
-      const godot = getGodotConnection();
+      const godot = getConnection();
       
       try {
         await godot.sendCommand('delete_node', { node_path });
@@ -92,7 +95,7 @@ export const nodeTools: MCPTool[] = [
         .describe('New value for the property'),
     }),
     execute: async ({ node_path, property, value }: UpdateNodePropertyParams): Promise<string> => {
-      const godot = getGodotConnection();
+      const godot = getConnection();
       
       try {
         const result = await godot.sendCommand<CommandResult>('update_node_property', {
@@ -116,7 +119,7 @@ export const nodeTools: MCPTool[] = [
         .describe('Path to the node to inspect (e.g. "/root/MainScene/Player")'),
     }),
     execute: async ({ node_path }: GetNodePropertiesParams): Promise<string> => {
-      const godot = getGodotConnection();
+      const godot = getConnection();
       
       try {
         const result = await godot.sendCommand<CommandResult>('get_node_properties', { node_path });
@@ -141,7 +144,7 @@ export const nodeTools: MCPTool[] = [
         .describe('Path to the parent node (e.g. "/root", "/root/MainScene")'),
     }),
     execute: async ({ parent_path }: ListNodesParams): Promise<string> => {
-      const godot = getGodotConnection();
+      const godot = getConnection();
       
       try {
         const result = await godot.sendCommand<CommandResult>('list_nodes', { parent_path });
@@ -162,3 +165,6 @@ export const nodeTools: MCPTool[] = [
     },
   },
 ];
+}
+
+export const nodeTools: MCPTool[] = createNodeTools();

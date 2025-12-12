@@ -1,12 +1,15 @@
 import { z } from 'zod';
-import { getGodotConnection } from '../utils/godot_connection.js';
+import { getGodotConnection, GodotConnection } from '../utils/godot_connection.js';
 import { MCPTool } from '../utils/types.js';
 
 interface ExecuteEditorScriptParams {
   code: string;
 }
 
-export const editorTools: MCPTool[] = [
+type GetConnection = () => GodotConnection;
+
+export function createEditorTools(getConnection: GetConnection = getGodotConnection): MCPTool[] {
+  return [
   {
     name: 'execute_editor_script',
     description: 'Executes arbitrary GDScript code in the Godot editor',
@@ -15,7 +18,7 @@ export const editorTools: MCPTool[] = [
         .describe('GDScript code to execute in the editor context'),
     }),
     execute: async ({ code }: ExecuteEditorScriptParams): Promise<string> => {
-      const godot = getGodotConnection();
+      const godot = getConnection();
       
       try {
         const result = await godot.sendCommand('execute_editor_script', { code });
@@ -38,3 +41,6 @@ export const editorTools: MCPTool[] = [
     },
   },
 ];
+}
+
+export const editorTools: MCPTool[] = createEditorTools();

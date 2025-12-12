@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getGodotConnection } from '../utils/godot_connection.js';
+import { getGodotConnection, GodotConnection } from '../utils/godot_connection.js';
 import { MCPTool, CommandResult } from '../utils/types.js';
 
 /**
@@ -33,7 +33,10 @@ interface CreateScriptTemplateParams {
 /**
  * Definition for script tools - operations that manipulate GDScript files
  */
-export const scriptTools: MCPTool[] = [
+type GetConnection = () => GodotConnection;
+
+export function createScriptTools(getConnection: GetConnection = getGodotConnection): MCPTool[] {
+  return [
   {
     name: 'create_script',
     description: 'Create a new GDScript file in the project',
@@ -46,7 +49,7 @@ export const scriptTools: MCPTool[] = [
         .describe('Path to a node to attach the script to (optional)'),
     }),
     execute: async ({ script_path, content, node_path }: CreateScriptParams): Promise<string> => {
-      const godot = getGodotConnection();
+      const godot = getConnection();
       
       try {
         const result = await godot.sendCommand<CommandResult>('create_script', {
@@ -76,7 +79,7 @@ export const scriptTools: MCPTool[] = [
         .describe('New content of the script'),
     }),
     execute: async ({ script_path, content }: EditScriptParams): Promise<string> => {
-      const godot = getGodotConnection();
+      const godot = getConnection();
       
       try {
         await godot.sendCommand('edit_script', {
@@ -103,7 +106,7 @@ export const scriptTools: MCPTool[] = [
       message: "Either script_path or node_path must be provided",
     }),
     execute: async ({ script_path, node_path }: GetScriptParams): Promise<string> => {
-      const godot = getGodotConnection();
+      const godot = getConnection();
       
       try {
         const result = await godot.sendCommand<CommandResult>('get_script', {
@@ -178,3 +181,6 @@ export const scriptTools: MCPTool[] = [
     },
   },
 ];
+}
+
+export const scriptTools: MCPTool[] = createScriptTools();

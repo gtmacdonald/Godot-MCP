@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getGodotConnection } from '../utils/godot_connection.js';
+import { getGodotConnection, GodotConnection } from '../utils/godot_connection.js';
 import { MCPTool, CommandResult } from '../utils/types.js';
 
 /**
@@ -27,7 +27,10 @@ interface CreateResourceParams {
 /**
  * Definition for scene tools - operations that manipulate Godot scenes
  */
-export const sceneTools: MCPTool[] = [
+type GetConnection = () => GodotConnection;
+
+export function createSceneTools(getConnection: GetConnection = getGodotConnection): MCPTool[] {
+  return [
   {
     name: 'create_scene',
     description: 'Create a new empty scene with optional root node type',
@@ -38,7 +41,7 @@ export const sceneTools: MCPTool[] = [
         .describe('Type of root node to create (e.g. "Node2D", "Node3D", "Control"). Defaults to "Node" if not specified'),
     }),
     execute: async ({ path, root_node_type = "Node" }: CreateSceneParams): Promise<string> => {
-      const godot = getGodotConnection();
+      const godot = getConnection();
       
       try {
         const result = await godot.sendCommand<CommandResult>('create_scene', { path, root_node_type });
@@ -57,7 +60,7 @@ export const sceneTools: MCPTool[] = [
         .describe('Path where the scene will be saved (e.g. "res://scenes/main.tscn"). If not provided, uses current scene path.'),
     }),
     execute: async ({ path }: SaveSceneParams): Promise<string> => {
-      const godot = getGodotConnection();
+      const godot = getConnection();
       
       try {
         const result = await godot.sendCommand<CommandResult>('save_scene', { path });
@@ -76,7 +79,7 @@ export const sceneTools: MCPTool[] = [
         .describe('Path to the scene file to open (e.g. "res://scenes/main.tscn")'),
     }),
     execute: async ({ path }: OpenSceneParams): Promise<string> => {
-      const godot = getGodotConnection();
+      const godot = getConnection();
       
       try {
         const result = await godot.sendCommand<CommandResult>('open_scene', { path });
@@ -92,7 +95,7 @@ export const sceneTools: MCPTool[] = [
     description: 'Get information about the currently open scene',
     parameters: z.object({}),
     execute: async (): Promise<string> => {
-      const godot = getGodotConnection();
+      const godot = getConnection();
       
       try {
         const result = await godot.sendCommand<CommandResult>('get_current_scene', {});
@@ -109,7 +112,7 @@ export const sceneTools: MCPTool[] = [
     description: 'Get information about the current Godot project',
     parameters: z.object({}),
     execute: async (): Promise<string> => {
-      const godot = getGodotConnection();
+      const godot = getConnection();
       
       try {
         const result = await godot.sendCommand<CommandResult>('get_project_info', {});
@@ -146,7 +149,7 @@ export const sceneTools: MCPTool[] = [
         .describe('Dictionary of property values to set on the resource'),
     }),
     execute: async ({ resource_type, resource_path, properties = {} }: CreateResourceParams): Promise<string> => {
-      const godot = getGodotConnection();
+      const godot = getConnection();
       
       try {
         const result = await godot.sendCommand<CommandResult>('create_resource', {
@@ -162,3 +165,6 @@ export const sceneTools: MCPTool[] = [
     },
   },
 ];
+}
+
+export const sceneTools: MCPTool[] = createSceneTools();
