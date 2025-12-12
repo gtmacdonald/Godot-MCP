@@ -2,6 +2,32 @@
 
 This document provides a reference for the commands available through the Godot MCP integration.
 
+## Resources
+
+Resources are read-only endpoints. Some are fixed, others are parameterized templates.
+
+### Static resources
+
+- `godot/scene/current` - Current scene structure.
+- `godot/scenes` - List of all scene files.
+- `godot/scripts` - List of all scripts.
+- `godot/project/structure` - Directory and file counts.
+- `godot/project/settings` - Key project settings.
+- `godot/project/resources` - Categorized resources.
+- `godot/editor/state` - Editor state snapshot.
+- `godot/editor/selected_node` - Selected node info.
+- `godot/editor/current_script` - Current script content (if any).
+
+### Dynamic resource templates
+
+- `godot/script/{path}` - Script content by path.  
+  Example: `@mcp godot-mcp read godot/script/res://scripts/player.gd`
+- `godot/script/metadata/{path}` - Script metadata by path.
+- `godot/scene/{path}` - Raw scene text by path.  
+  Example: `@mcp godot-mcp read godot/scene/res://scenes/main.tscn`
+- `godot/scene/{path}/structure` - Scene structure by path.
+- `godot/resource/{path}` - Text-based resource content by path (e.g., `.tres`).
+
 ## Node Tools
 
 ### create_node
@@ -194,6 +220,19 @@ Create a new resource in the project.
 **Example:**
 ```
 Create a StyleBoxFlat resource at "res://resources/button_style.tres" with a blue background color.
+```
+
+## Editor Tools
+
+### execute_editor_script
+Execute arbitrary GDScript code in the editor context.
+
+**Parameters:**
+- `code` - GDScript code string.
+
+**Example:**
+```
+Run an editor script that prints the current scene root name.
 ```
 
 ## Using Commands with Claude

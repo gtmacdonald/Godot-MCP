@@ -74,7 +74,7 @@ After setup, you can work with your Godot project directly from Claude using nat
 ### Example Prompts
 
 ```
-@mcp godot-mcp read godot://script/current
+@mcp godot-mcp read godot/editor/current_script
 
 I need help optimizing my player movement code. Can you suggest improvements?
 ```
@@ -86,7 +86,7 @@ Add a cube in the middle of the scene and then make a camera that is looking at 
 ```
 
 ```
-@mcp godot-mcp read godot://scene/current
+@mcp godot-mcp read godot/scene/current
 
 Create an enemy AI that patrols between waypoints and attacks the player when in range.
 ```
@@ -101,41 +101,64 @@ Create an enemy AI that patrols between waypoints and attacks the player when in
 
 ## Available Resources and Commands
 
-### Resource Endpoints:
-- `godot://script/current` - The currently open script
-- `godot://scene/current` - The currently open scene
-- `godot://project/info` - Project metadata and settings
+### Resource Endpoints
+
+Static resources (no parameters):
+
+- `godot/editor/current_script` - Currently edited script content and metadata.
+- `godot/scene/current` - Current scene structure.
+- `godot/scenes` - List of all scenes in the project.
+- `godot/scripts` - List of all scripts in the project.
+- `godot/project/structure` - Directory and file counts.
+- `godot/project/settings` - Key project settings and input map.
+- `godot/project/resources` - Categorized resources.
+- `godot/editor/state` - Editor state snapshot.
+- `godot/editor/selected_node` - Currently selected node info.
+
+Dynamic resources (templates):
+
+- `godot/script/{path}` - Read any script by path.  
+  Example: `@mcp godot-mcp read godot/script/res://scripts/player.gd`
+- `godot/script/metadata/{path}` - Read script metadata by path.
+- `godot/scene/{path}` - Read raw `.tscn/.scn` text by path.  
+  Example: `@mcp godot-mcp read godot/scene/res://scenes/main.tscn`
+- `godot/scene/{path}/structure` - Read scene structure by path.
+- `godot/resource/{path}` - Read text-based Godot resources (e.g., `.tres`) by path.
 
 ### Command Categories:
 
 #### Node Commands
-- `get-scene-tree` - Returns the scene tree structure
-- `get-node-properties` - Gets properties of a specific node
-- `create-node` - Creates a new node
-- `delete-node` - Deletes a node
-- `modify-node` - Updates node properties
+- `create_node` - Create a new node
+- `delete_node` - Delete a node
+- `update_node_property` - Update a node property
+- `get_node_properties` - Get all properties of a node
+- `list_nodes` - List child nodes under a parent
 
 #### Script Commands
-- `list-project-scripts` - Lists all scripts in the project
-- `read-script` - Reads a specific script
-- `modify-script` - Updates script content
-- `create-script` - Creates a new script
-- `analyze-script` - Provides analysis of a script
+- `create_script` - Create a new GDScript file
+- `edit_script` - Edit an existing script
+- `get_script` - Read a script’s content
+- `create_script_template` - Generate boilerplate locally
+- `get_script_metadata` - Read script metadata (used by resources)
 
 #### Scene Commands
-- `list-project-scenes` - Lists all scenes in the project
-- `read-scene` - Reads scene structure
-- `create-scene` - Creates a new scene
-- `save-scene` - Saves current scene
+- `create_scene` - Create a new empty scene
+- `save_scene` - Save the current scene
+- `open_scene` - Open a scene in the editor
+- `get_current_scene` - Get current scene info
+- `get_scene_structure` - Get structure for a scene by path
+- `get_scene_text` - Read raw scene text by path
 
 #### Project Commands
-- `get-project-settings` - Gets project settings
-- `list-project-resources` - Lists project resources
+- `get_project_info` - Get project metadata
+- `get_project_structure` - Get project structure
+- `get_project_settings` - Get key project settings
+- `list_project_files` - List project files by extension
+- `list_project_resources` - List categorized resources
+- `get_file_text` - Read a text-based file by path
 
 #### Editor Commands
-- `get-editor-state` - Gets current editor state
-- `run-project` - Runs the project
-- `stop-project` - Stops the running project
+- `execute_editor_script` - Execute arbitrary GDScript in the editor context
 
 ## Troubleshooting
 

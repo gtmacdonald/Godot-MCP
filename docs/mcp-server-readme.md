@@ -43,10 +43,7 @@ Start the server using one of the following methods:
 
 ```bash
 # Start with stdio transport (for Claude Desktop)
-npm start
-
-# Start with SSE transport (for web-based Claude)
-npm run start:sse
+cd server && npm start
 ```
 
 #### Programmatic Usage
@@ -100,7 +97,7 @@ The server provides the following tools to Claude:
 
 - **create_node**: Create a new node in the scene tree
 - **delete_node**: Remove a node from the scene tree
-- **update_node**: Update node properties
+- **update_node_property**: Update node properties
 - **list_nodes**: Get a list of nodes in the scene
 
 ### Script Management
@@ -108,16 +105,27 @@ The server provides the following tools to Claude:
 - **create_script**: Create a new GDScript file
 - **edit_script**: Modify an existing script
 - **get_script**: Get a script's content
+- **create_script_template**: Generate boilerplate locally
 
 ### Resource Management
 
-- **create_resource**: Create a new resource
-- **list_resources**: List resources in a directory
+- **create_resource**: Create a new resource in the project
 
 ### Scene Management
 
 - **save_scene**: Save the current scene
 - **open_scene**: Open a scene file
+- **create_scene**: Create a new empty scene
+- **get_scene_structure**: Get a scene's structure by path
+- **get_scene_text**: Get raw scene text by path
+
+### Dynamic Resources
+
+In addition to tools, the server exposes parameterized resource templates for read-only access:
+
+- `godot/script/{path}` and `godot/script/metadata/{path}`
+- `godot/scene/{path}` and `godot/scene/{path}/structure`
+- `godot/resource/{path}`
 
 ## Implementation Details
 
@@ -128,14 +136,9 @@ The server follows a modular architecture:
 ```
 src/
 ├── index.ts              # Entry point
-├── godot_connection.ts   # Godot WebSocket connection manager
 ├── tools/                # Tool definitions
-│   ├── node_tools.ts     # Node manipulation tools
-│   ├── script_tools.ts   # Script manipulation tools
-│   └── resource_tools.ts # Resource manipulation tools
-└── utils/                # Utility functions
-    ├── websocket.ts      # WebSocket utilities
-    └── error_handler.ts  # Error handling utilities
+├── resources/            # Static resources + templates
+└── utils/                # WebSocket connection + types
 ```
 
 ### Key Classes
