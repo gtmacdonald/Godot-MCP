@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getGodotConnection, GodotConnection } from '../utils/godot_connection.js';
 import { MCPTool, CommandResult } from '../utils/types.js';
+import { generateScenePatch, ScenePatchOperation, DesiredSceneNode, SceneTreeNode } from '../utils/scene_patch.js';
 
 /**
  * Type definitions for scene tool parameters
@@ -24,41 +25,16 @@ interface CreateResourceParams {
   properties?: Record<string, any>;
 }
 
-type ScenePatchOperation =
-  | {
-      op: 'create_node';
-      parent_path?: string;
-      node_type?: string;
-      node_name: string;
-      properties?: Record<string, any>;
-      set_owner?: boolean;
-    }
-  | {
-      op: 'delete_node';
-      node_path: string;
-    }
-  | {
-      op: 'set_property';
-      node_path: string;
-      property: string;
-      value: any;
-    }
-  | {
-      op: 'rename_node';
-      node_path: string;
-      new_name: string;
-    }
-  | {
-      op: 'reparent_node';
-      node_path: string;
-      new_parent_path: string;
-      keep_global_transform?: boolean;
-      index?: number;
-    };
-
 interface ApplyScenePatchParams {
   operations: ScenePatchOperation[];
   strict?: boolean;
+}
+
+interface GenerateScenePatchParams {
+  desired: { children: DesiredSceneNode[] };
+  allow_delete?: boolean;
+  strict_types?: boolean;
+  apply?: boolean;
 }
 
 /**
@@ -67,6 +43,15 @@ interface ApplyScenePatchParams {
 type GetConnection = () => GodotConnection;
 
 export function createSceneTools(getConnection: GetConnection = getGodotConnection): MCPTool[] {
+  const desiredNodeSchema: z.ZodType<DesiredSceneNode> = z.lazy(() =>
+    z.object({
+      name: z.string(),
+      type: z.string().optional(),
+      properties: z.record(z.any()).optional(),
+      children: z.array(desiredNodeSchema).optional(),
+    }),
+  );
+
   return [
   {
     name: 'create_scene',
@@ -251,6 +236,54 @@ export function createSceneTools(getConnection: GetConnection = getGodotConnecti
         return msg;
       } catch (error) {
         throw new Error(`Failed to apply scene patch: ${(error as Error).message}`);
+      }
+    },
+  },
+
+  {
+    name: 'generate_scene_patch',
+    description: 'Generate a scene patch (operations) to transform the edited scene toward a desired tree',
+    parameters: z.object({
+      desired: z.object({
+        children: z.array(desiredNodeSchema).min(1),
+      }),
+      allow_delete: z.boolean().optional().describe('If true, delete nodes not present in desired (default: false)'),
+      strict_types: z.boolean().optional().describe('If true, error on node type mismatches (default: true)'),
+      apply: z.boolean().optional().describe('If true, also apply the generated patch (default: false)'),
+    }),
+    execute: async ({ desired, allow_delete = false, strict_types = true, apply = false }: GenerateScenePatchParams): Promise<string> => {
+      const godot = getConnection();
+
+      try {
+        const edited = await godot.sendCommand<{ scene_path: string; structure: SceneTreeNode }>(
+          'get_edited_scene_structure',
+          {},
+        );
+
+        const { operations, errors } = generateScenePatch(edited.structure, desired, {
+          allow_delete,
+          strict_types,
+        });
+
+        if (strict_types && errors.length) {
+          throw new Error(errors[0]);
+        }
+
+        let output = `Generated ${operations.length} operations for ${edited.scene_path}`;
+        if (errors.length) output += ` (${errors.length} warnings)`;
+        output += `\n\n\`\`\`json\n${JSON.stringify(operations, null, 2)}\n\`\`\``;
+
+        if (apply && operations.length) {
+          const applied = await godot.sendCommand<CommandResult>('apply_scene_patch', {
+            operations,
+            strict: true,
+          });
+          output += `\n\nApply result: ${applied.applied}/${applied.total}`;
+        }
+
+        return output;
+      } catch (error) {
+        throw new Error(`Failed to generate scene patch: ${(error as Error).message}`);
       }
     },
   },

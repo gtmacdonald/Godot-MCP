@@ -4,6 +4,9 @@ extends MCPBaseCommandProcessor
 
 func process_command(client_id: int, command_type: String, params: Dictionary, command_id: String) -> bool:
 	match command_type:
+		"get_edited_scene_structure":
+			_get_edited_scene_structure(client_id, params, command_id)
+			return true
 		"get_scene_text":
 			_get_scene_text(client_id, params, command_id)
 			return true
@@ -53,6 +56,42 @@ func _get_scene_text(client_id: int, params: Dictionary, command_id: String) -> 
 		"path": path,
 		"content": content
 	}, command_id)
+
+func _get_edited_scene_structure(client_id: int, _params: Dictionary, command_id: String) -> void:
+	var plugin = Engine.get_meta("GodotMCPPlugin")
+	if not plugin:
+		return _send_error(client_id, "GodotMCPPlugin not found in Engine metadata", command_id)
+	
+	var editor_interface = plugin.get_editor_interface()
+	var edited_scene_root = editor_interface.get_edited_scene_root()
+	if not edited_scene_root:
+		return _send_error(client_id, "No scene is currently being edited", command_id)
+	
+	var scene_path = edited_scene_root.scene_file_path
+	if scene_path.is_empty():
+		scene_path = "Untitled"
+	
+	var structure = _get_node_structure_for_patch(edited_scene_root, "/root")
+	
+	_send_success(client_id, {
+		"scene_path": scene_path,
+		"structure": structure
+	}, command_id)
+
+func _get_node_structure_for_patch(node: Node, rel_path: String) -> Dictionary:
+	var structure = {
+		"name": node.name,
+		"type": node.get_class(),
+		"path": rel_path
+	}
+	
+	var children: Array = []
+	for child in node.get_children():
+		if child is Node:
+			children.append(_get_node_structure_for_patch(child, rel_path + "/" + str(child.name)))
+	
+	structure["children"] = children
+	return structure
 
 func _apply_scene_patch(client_id: int, params: Dictionary, command_id: String) -> void:
 	var operations: Array = params.get("operations", [])

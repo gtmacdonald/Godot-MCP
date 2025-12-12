@@ -236,6 +236,15 @@ Apply a sequence of node operations to the currently edited scene (intended as a
 - `rename_node` (`node_path`, `new_name`)
 - `reparent_node` (`node_path`, `new_parent_path`, `keep_global_transform?`, `index?`)
 
+### generate_scene_patch
+Generate an `apply_scene_patch` operation list by diffing the currently edited scene against a desired tree.
+
+**Parameters:**
+- `desired.children` - Desired node tree (by name, optional `type`, optional `properties`)
+- `allow_delete` (optional) - Delete nodes not present in desired (default: false)
+- `strict_types` (optional) - Error on node type mismatches (default: true)
+- `apply` (optional) - Also apply the generated patch (default: false)
+
 ## Editor Tools
 
 ### execute_editor_script

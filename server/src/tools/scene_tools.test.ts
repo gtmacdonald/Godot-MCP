@@ -75,4 +75,43 @@ describe('sceneTools', () => {
     });
     expect(result).toBe('Applied 2/2 operations');
   });
+
+  it('generate_scene_patch generates create operations for missing nodes', async () => {
+    sendCommand
+      .mockResolvedValueOnce({
+        scene_path: 'res://scenes/main.tscn',
+        structure: {
+          name: 'Root',
+          type: 'Node',
+          path: '/root',
+          children: [],
+        },
+      })
+      .mockResolvedValueOnce({ applied: 1, total: 1 });
+
+    const tools = createSceneTools(getConnection);
+    const tool = tools.find(t => t.name === 'generate_scene_patch')!;
+
+    const out = await tool.execute({
+      desired: { children: [{ name: 'Player', type: 'Node2D' }] },
+      apply: true,
+    } as any);
+
+    expect(sendCommand).toHaveBeenNthCalledWith(1, 'get_edited_scene_structure', {});
+    expect(sendCommand).toHaveBeenNthCalledWith(2, 'apply_scene_patch', {
+      operations: [
+        {
+          op: 'create_node',
+          parent_path: '/root',
+          node_type: 'Node2D',
+          node_name: 'Player',
+          properties: {},
+          set_owner: true,
+        },
+      ],
+      strict: true,
+    });
+    expect(out).toContain('Generated 1 operations');
+    expect(out).toContain('Apply result: 1/1');
+  });
 });
