@@ -73,3 +73,81 @@ export function createSceneStructureResource(getConnection: GetConnection = getG
 }
 
 export const sceneStructureResource: Resource = createSceneStructureResource();
+
+/**
+ * Resource template that provides raw scene text by path.
+ */
+export function createSceneContentTemplate(
+  getConnection: GetConnection = getGodotConnection,
+): ResourceTemplate {
+  return {
+    uriTemplate: 'godot/scene/{path}',
+    name: 'Godot Scene Content (by path)',
+    mimeType: 'text/plain',
+    arguments: [
+      {
+        name: 'path',
+        description: 'Scene path (e.g. "res://scenes/main.tscn")',
+        required: true,
+        complete: async (value) => {
+          const godot = getConnection();
+          try {
+            const result = await godot.sendCommand('list_project_files', {
+              extensions: ['.tscn', '.scn'],
+            });
+            const files: string[] = result?.files ?? [];
+            return { values: files.filter(f => f.includes(value ?? '')) };
+          } catch {
+            return { values: [] };
+          }
+        },
+      },
+    ],
+    async load({ path }: { path: string }) {
+      const godot = getConnection();
+      const result = await godot.sendCommand('get_scene_text', { path });
+      return { text: result.content ?? '' };
+    },
+  };
+}
+
+export const sceneContentTemplate: ResourceTemplate = createSceneContentTemplate();
+
+/**
+ * Resource template that provides scene structure by path.
+ */
+export function createSceneStructureTemplate(
+  getConnection: GetConnection = getGodotConnection,
+): ResourceTemplate {
+  return {
+    uriTemplate: 'godot/scene/{path}/structure',
+    name: 'Godot Scene Structure (by path)',
+    mimeType: 'application/json',
+    arguments: [
+      {
+        name: 'path',
+        description: 'Scene path (e.g. "res://scenes/main.tscn")',
+        required: true,
+        complete: async (value) => {
+          const godot = getConnection();
+          try {
+            const result = await godot.sendCommand('list_project_files', {
+              extensions: ['.tscn', '.scn'],
+            });
+            const files: string[] = result?.files ?? [];
+            return { values: files.filter(f => f.includes(value ?? '')) };
+          } catch {
+            return { values: [] };
+          }
+        },
+      },
+    ],
+    async load({ path }: { path: string }) {
+      const godot = getConnection();
+      const result = await godot.sendCommand('get_scene_structure', { path });
+      return { text: JSON.stringify(result) };
+    },
+  };
+}
+
+export const sceneStructureTemplate: ResourceTemplate = createSceneStructureTemplate();

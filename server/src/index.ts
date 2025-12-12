@@ -8,7 +8,9 @@ import { getGodotConnection } from './utils/godot_connection.js';
 // Import resources
 import { 
   sceneListResource, 
-  sceneStructureResource 
+  sceneStructureResource,
+  sceneContentTemplate,
+  sceneStructureTemplate
 } from './resources/scene_resources.js';
 import { 
   scriptResource, 
@@ -20,7 +22,8 @@ import {
 import { 
   projectStructureResource,
   projectSettingsResource,
-  projectResourcesResource 
+  projectResourcesResource,
+  resourceTextTemplate
 } from './resources/project_resources.js';
 import { 
   editorStateResource,
@@ -62,6 +65,9 @@ async function main() {
   // Resource templates (dynamic resources)
   server.addResourceTemplate(scriptContentTemplate);
   server.addResourceTemplate(scriptMetadataTemplate);
+  server.addResourceTemplate(sceneContentTemplate);
+  server.addResourceTemplate(sceneStructureTemplate);
+  server.addResourceTemplate(resourceTextTemplate);
 
   // Try to connect to Godot
   try {

@@ -2,12 +2,15 @@
 class_name MCPSceneCommands
 extends MCPBaseCommandProcessor
 
-func process_command(client_id: int, command_type: String, params: Dictionary, command_id: String) -> bool:
-	match command_type:
-		"save_scene":
-			_save_scene(client_id, params, command_id)
-			return true
-		"open_scene":
+	func process_command(client_id: int, command_type: String, params: Dictionary, command_id: String) -> bool:
+		match command_type:
+			"get_scene_text":
+				_get_scene_text(client_id, params, command_id)
+				return true
+			"save_scene":
+				_save_scene(client_id, params, command_id)
+				return true
+			"open_scene":
 			_open_scene(client_id, params, command_id)
 			return true
 		"get_current_scene":
@@ -16,10 +19,37 @@ func process_command(client_id: int, command_type: String, params: Dictionary, c
 		"get_scene_structure":
 			_get_scene_structure(client_id, params, command_id)
 			return true
-		"create_scene":
-			_create_scene(client_id, params, command_id)
-			return true
-	return false  # Command not handled
+			"create_scene":
+				_create_scene(client_id, params, command_id)
+				return true
+		return false  # Command not handled
+
+	func _get_scene_text(client_id: int, params: Dictionary, command_id: String) -> void:
+		var path = params.get("path", "")
+		
+		if path.is_empty():
+			return _send_error(client_id, "Scene path cannot be empty", command_id)
+		
+		if not path.begins_with("res://"):
+			path = "res://" + path
+		
+		if not FileAccess.file_exists(path):
+			return _send_error(client_id, "Scene file not found: " + path, command_id)
+		
+		if not (path.ends_with(".tscn") or path.ends_with(".scn")):
+			return _send_error(client_id, "Only .tscn/.scn scenes are supported", command_id)
+		
+		var file = FileAccess.open(path, FileAccess.READ)
+		if file == null:
+			return _send_error(client_id, "Failed to open scene file: " + path, command_id)
+		
+		var content = file.get_as_text()
+		file = null
+		
+		_send_success(client_id, {
+			"path": path,
+			"content": content
+		}, command_id)
 
 func _save_scene(client_id: int, params: Dictionary, command_id: String) -> void:
 	var path = params.get("path", "")

@@ -86,3 +86,43 @@ export function createProjectResourcesResource(getConnection: GetConnection = ge
 }
 
 export const projectResourcesResource: Resource = createProjectResourcesResource();
+
+/**
+ * Resource template that provides raw text for project resources by path.
+ * Intended for text-based Godot resources (e.g. .tres).
+ */
+export function createResourceTextTemplate(
+  getConnection: GetConnection = getGodotConnection,
+): ResourceTemplate {
+  return {
+    uriTemplate: 'godot/resource/{path}',
+    name: 'Godot Project Resource (text by path)',
+    mimeType: 'text/plain',
+    arguments: [
+      {
+        name: 'path',
+        description: 'Resource path (e.g. "res://resources/style.tres")',
+        required: true,
+        complete: async (value) => {
+          const godot = getConnection();
+          try {
+            const result = await godot.sendCommand('list_project_files', {
+              extensions: ['.tres', '.res'],
+            });
+            const files: string[] = result?.files ?? [];
+            return { values: files.filter(f => f.includes(value ?? '')) };
+          } catch {
+            return { values: [] };
+          }
+        },
+      },
+    ],
+    async load({ path }: { path: string }) {
+      const godot = getConnection();
+      const result = await godot.sendCommand('get_file_text', { path });
+      return { text: result.content ?? '' };
+    },
+  };
+}
+
+export const resourceTextTemplate: ResourceTemplate = createResourceTextTemplate();

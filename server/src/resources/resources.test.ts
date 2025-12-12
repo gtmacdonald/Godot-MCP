@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createSceneListResource,
   createSceneStructureResource,
+  createSceneContentTemplate,
+  createSceneStructureTemplate,
 } from './scene_resources.js';
 import {
   createScriptListResource,
@@ -13,6 +15,7 @@ import {
   createProjectStructureResource,
   createProjectSettingsResource,
   createProjectResourcesResource,
+  createResourceTextTemplate,
 } from './project_resources.js';
 import {
   createEditorStateResource,
@@ -45,6 +48,26 @@ describe('resources', () => {
     const out = await res.load();
     expect(sendCommand).toHaveBeenCalledWith('get_current_scene_structure', {});
     expect(JSON.parse(out.text)).toEqual({ ok: true });
+  });
+
+  it('sceneContentTemplate loads scene text by path', async () => {
+    sendCommand.mockResolvedValue({ content: '[gd_scene]' });
+    const tpl = createSceneContentTemplate(getConnection);
+    const out = await tpl.load({ path: 'res://scenes/main.tscn' } as any);
+    expect(sendCommand).toHaveBeenCalledWith('get_scene_text', {
+      path: 'res://scenes/main.tscn',
+    });
+    expect(out.text).toContain('[gd_scene]');
+  });
+
+  it('sceneStructureTemplate loads structure by path', async () => {
+    sendCommand.mockResolvedValue({ path: 'res://a.tscn', structure: { name: 'Root' } });
+    const tpl = createSceneStructureTemplate(getConnection);
+    const out = await tpl.load({ path: 'res://a.tscn' } as any);
+    expect(sendCommand).toHaveBeenCalledWith('get_scene_structure', {
+      path: 'res://a.tscn',
+    });
+    expect(JSON.parse(out.text)).toEqual({ path: 'res://a.tscn', structure: { name: 'Root' } });
   });
 
   it('scriptListResource splits gd/cs', async () => {
@@ -112,6 +135,16 @@ describe('resources', () => {
     expect(JSON.parse(structure.text)).toEqual({ a: 1 });
     expect(JSON.parse(settings.text)).toEqual({ a: 1 });
     expect(JSON.parse(resources.text)).toEqual({ a: 1 });
+  });
+
+  it('resourceTextTemplate loads text resource by path', async () => {
+    sendCommand.mockResolvedValue({ content: '[resource]' });
+    const tpl = createResourceTextTemplate(getConnection);
+    const out = await tpl.load({ path: 'res://resources/foo.tres' } as any);
+    expect(sendCommand).toHaveBeenCalledWith('get_file_text', {
+      path: 'res://resources/foo.tres',
+    });
+    expect(out.text).toContain('[resource]');
   });
 
   it('editor resources handle current script missing', async () => {
