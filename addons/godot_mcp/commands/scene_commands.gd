@@ -2,15 +2,18 @@
 class_name MCPSceneCommands
 extends MCPBaseCommandProcessor
 
-	func process_command(client_id: int, command_type: String, params: Dictionary, command_id: String) -> bool:
-		match command_type:
-			"get_scene_text":
-				_get_scene_text(client_id, params, command_id)
-				return true
-			"save_scene":
-				_save_scene(client_id, params, command_id)
-				return true
-			"open_scene":
+func process_command(client_id: int, command_type: String, params: Dictionary, command_id: String) -> bool:
+	match command_type:
+		"get_scene_text":
+			_get_scene_text(client_id, params, command_id)
+			return true
+		"apply_scene_patch":
+			_apply_scene_patch(client_id, params, command_id)
+			return true
+		"save_scene":
+			_save_scene(client_id, params, command_id)
+			return true
+		"open_scene":
 			_open_scene(client_id, params, command_id)
 			return true
 		"get_current_scene":
@@ -19,37 +22,462 @@ extends MCPBaseCommandProcessor
 		"get_scene_structure":
 			_get_scene_structure(client_id, params, command_id)
 			return true
-			"create_scene":
-				_create_scene(client_id, params, command_id)
-				return true
-		return false  # Command not handled
+		"create_scene":
+			_create_scene(client_id, params, command_id)
+			return true
+	return false  # Command not handled
 
-	func _get_scene_text(client_id: int, params: Dictionary, command_id: String) -> void:
-		var path = params.get("path", "")
+func _get_scene_text(client_id: int, params: Dictionary, command_id: String) -> void:
+	var path = params.get("path", "")
+	
+	if path.is_empty():
+		return _send_error(client_id, "Scene path cannot be empty", command_id)
+	
+	if not path.begins_with("res://"):
+		path = "res://" + path
+	
+	if not FileAccess.file_exists(path):
+		return _send_error(client_id, "Scene file not found: " + path, command_id)
+	
+	if not (path.ends_with(".tscn") or path.ends_with(".scn")):
+		return _send_error(client_id, "Only .tscn/.scn scenes are supported", command_id)
+	
+	var file = FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return _send_error(client_id, "Failed to open scene file: " + path, command_id)
+	
+	var content = file.get_as_text()
+	file = null
+	
+	_send_success(client_id, {
+		"path": path,
+		"content": content
+	}, command_id)
+
+func _apply_scene_patch(client_id: int, params: Dictionary, command_id: String) -> void:
+	var operations: Array = params.get("operations", [])
+	var strict: bool = params.get("strict", true)
+	
+	if operations.is_empty():
+		return _send_error(client_id, "operations must be a non-empty array", command_id)
+	
+	var plugin = Engine.get_meta("GodotMCPPlugin")
+	if not plugin:
+		return _send_error(client_id, "GodotMCPPlugin not found in Engine metadata", command_id)
+	
+	var editor_interface = plugin.get_editor_interface()
+	var edited_scene_root = editor_interface.get_edited_scene_root()
+	if not edited_scene_root:
+		return _send_error(client_id, "No scene is currently being edited", command_id)
+	
+	var undo_redo = _get_undo_redo()
+	var errors: Array = []
+	var queued := 0
+	var applied := 0
+	
+	if undo_redo:
+		undo_redo.create_action("Apply Scene Patch")
+	
+	for op_dict in operations:
+		if typeof(op_dict) != TYPE_DICTIONARY:
+			errors.append("Invalid operation (expected Dictionary)")
+			if strict:
+				break
+			continue
 		
-		if path.is_empty():
-			return _send_error(client_id, "Scene path cannot be empty", command_id)
+		var ok := false
+		if undo_redo:
+			ok = _queue_patch_operation(undo_redo, edited_scene_root, op_dict, errors)
+			if ok:
+				queued += 1
+		else:
+			ok = _apply_patch_operation_immediate(edited_scene_root, op_dict, errors)
+			if ok:
+				applied += 1
 		
-		if not path.begins_with("res://"):
-			path = "res://" + path
-		
-		if not FileAccess.file_exists(path):
-			return _send_error(client_id, "Scene file not found: " + path, command_id)
-		
-		if not (path.ends_with(".tscn") or path.ends_with(".scn")):
-			return _send_error(client_id, "Only .tscn/.scn scenes are supported", command_id)
-		
-		var file = FileAccess.open(path, FileAccess.READ)
-		if file == null:
-			return _send_error(client_id, "Failed to open scene file: " + path, command_id)
-		
-		var content = file.get_as_text()
-		file = null
-		
-		_send_success(client_id, {
-			"path": path,
-			"content": content
-		}, command_id)
+		if not ok and strict:
+			break
+	
+	if undo_redo:
+		if strict and errors.size() > 0:
+			# Do not commit: nothing is applied.
+			pass
+		else:
+			undo_redo.commit_action()
+			applied = queued
+	
+	if applied > 0:
+		_mark_scene_modified()
+	
+	var result = {
+		"applied": applied,
+		"total": operations.size(),
+		"used_undo_redo": undo_redo != null
+	}
+	if errors.size() > 0:
+		result["errors"] = errors
+	
+	if strict and errors.size() > 0:
+		return _send_error(client_id, errors[0], command_id)
+	
+	_send_success(client_id, result, command_id)
+
+func _queue_patch_operation(undo_redo, edited_scene_root: Node, op_dict: Dictionary, errors: Array) -> bool:
+	var op = op_dict.get("op", "")
+	
+	match op:
+		"create_node":
+			return _queue_create_node(undo_redo, edited_scene_root, op_dict, errors)
+		"delete_node":
+			return _queue_delete_node(undo_redo, edited_scene_root, op_dict, errors)
+		"set_property":
+			return _queue_set_property(undo_redo, op_dict, errors)
+		"rename_node":
+			return _queue_rename_node(undo_redo, op_dict, errors)
+		"reparent_node":
+			return _queue_reparent_node(undo_redo, edited_scene_root, op_dict, errors)
+		_:
+			errors.append("Unknown op: %s" % str(op))
+			return false
+
+func _apply_patch_operation_immediate(edited_scene_root: Node, op_dict: Dictionary, errors: Array) -> bool:
+	var op = op_dict.get("op", "")
+	
+	match op:
+		"create_node":
+			return _apply_create_node_immediate(edited_scene_root, op_dict, errors)
+		"delete_node":
+			return _apply_delete_node_immediate(edited_scene_root, op_dict, errors)
+		"set_property":
+			return _apply_set_property_immediate(op_dict, errors)
+		"rename_node":
+			return _apply_rename_node_immediate(op_dict, errors)
+		"reparent_node":
+			return _apply_reparent_node_immediate(edited_scene_root, op_dict, errors)
+		_:
+			errors.append("Unknown op: %s" % str(op))
+			return false
+
+func _queue_create_node(undo_redo, edited_scene_root: Node, op: Dictionary, errors: Array) -> bool:
+	var parent_path: String = op.get("parent_path", "/root")
+	var node_type: String = op.get("node_type", "Node")
+	var node_name: String = op.get("node_name", "")
+	var properties: Dictionary = op.get("properties", {})
+	var set_owner: bool = op.get("set_owner", true)
+	
+	if node_name.is_empty():
+		errors.append("create_node: node_name cannot be empty")
+		return false
+	
+	if not ClassDB.class_exists(node_type) or not ClassDB.can_instantiate(node_type):
+		errors.append("create_node: invalid node_type: %s" % node_type)
+		return false
+	
+	var parent = _get_editor_node(parent_path)
+	if not parent:
+		errors.append("create_node: parent not found: %s" % parent_path)
+		return false
+	
+	if parent.get_node_or_null(node_name) != null:
+		errors.append("create_node: node already exists under parent: %s" % node_name)
+		return false
+	
+	var node = ClassDB.instantiate(node_type)
+	node.name = node_name
+	
+	undo_redo.add_do_method(parent, "add_child", node)
+	undo_redo.add_undo_method(parent, "remove_child", node)
+	
+	if set_owner:
+		undo_redo.add_do_property(node, "owner", edited_scene_root)
+		undo_redo.add_undo_property(node, "owner", null)
+	
+	for key in properties.keys():
+		var property_name = str(key)
+		var parsed_value = _parse_property_value(properties[key])
+		if property_name in node:
+			undo_redo.add_do_property(node, property_name, parsed_value)
+	
+	return true
+
+func _queue_delete_node(undo_redo, edited_scene_root: Node, op: Dictionary, errors: Array) -> bool:
+	var node_path: String = op.get("node_path", "")
+	if node_path.is_empty():
+		errors.append("delete_node: node_path cannot be empty")
+		return false
+	
+	var node = _get_editor_node(node_path)
+	if not node:
+		errors.append("delete_node: node not found: %s" % node_path)
+		return false
+	
+	if node == edited_scene_root:
+		errors.append("delete_node: cannot delete root node")
+		return false
+	
+	var parent = node.get_parent()
+	if not parent:
+		errors.append("delete_node: node has no parent")
+		return false
+	
+	var old_index = parent.get_children().find(node)
+	
+	undo_redo.add_do_method(parent, "remove_child", node)
+	undo_redo.add_undo_method(parent, "add_child", node)
+	undo_redo.add_undo_method(parent, "move_child", node, old_index)
+	return true
+
+func _queue_set_property(undo_redo, op: Dictionary, errors: Array) -> bool:
+	var node_path: String = op.get("node_path", "")
+	var property_name: String = op.get("property", "")
+	var value = op.get("value")
+	
+	if node_path.is_empty() or property_name.is_empty():
+		errors.append("set_property: node_path and property are required")
+		return false
+	
+	var node = _get_editor_node(node_path)
+	if not node:
+		errors.append("set_property: node not found: %s" % node_path)
+		return false
+	
+	if not property_name in node:
+		errors.append("set_property: property does not exist: %s" % property_name)
+		return false
+	
+	var parsed_value = _parse_property_value(value)
+	var old_value = node.get(property_name)
+	
+	undo_redo.add_do_property(node, property_name, parsed_value)
+	undo_redo.add_undo_property(node, property_name, old_value)
+	return true
+
+func _queue_rename_node(undo_redo, op: Dictionary, errors: Array) -> bool:
+	var node_path: String = op.get("node_path", "")
+	var new_name: String = op.get("new_name", "")
+	
+	if node_path.is_empty() or new_name.is_empty():
+		errors.append("rename_node: node_path and new_name are required")
+		return false
+	
+	var node = _get_editor_node(node_path)
+	if not node:
+		errors.append("rename_node: node not found: %s" % node_path)
+		return false
+	
+	var parent = node.get_parent()
+	if parent and parent.get_node_or_null(new_name) != null:
+		errors.append("rename_node: sibling already exists with name: %s" % new_name)
+		return false
+	
+	var old_name = node.name
+	undo_redo.add_do_property(node, "name", new_name)
+	undo_redo.add_undo_property(node, "name", old_name)
+	return true
+
+func _queue_reparent_node(undo_redo, edited_scene_root: Node, op: Dictionary, errors: Array) -> bool:
+	var node_path: String = op.get("node_path", "")
+	var new_parent_path: String = op.get("new_parent_path", "")
+	var keep_global: bool = op.get("keep_global_transform", false)
+	var index = op.get("index", -1)
+	
+	if node_path.is_empty() or new_parent_path.is_empty():
+		errors.append("reparent_node: node_path and new_parent_path are required")
+		return false
+	
+	var node = _get_editor_node(node_path)
+	if not node:
+		errors.append("reparent_node: node not found: %s" % node_path)
+		return false
+	
+	if node == edited_scene_root:
+		errors.append("reparent_node: cannot reparent root node")
+		return false
+	
+	var new_parent = _get_editor_node(new_parent_path)
+	if not new_parent:
+		errors.append("reparent_node: new parent not found: %s" % new_parent_path)
+		return false
+	
+	var old_parent = node.get_parent()
+	if not old_parent:
+		errors.append("reparent_node: node has no parent")
+		return false
+	
+	var old_index = old_parent.get_children().find(node)
+	var saved_global = null
+	if keep_global:
+		saved_global = _get_global_transform_variant(node)
+	
+	undo_redo.add_do_method(self, "_reparent_node_internal", node, new_parent, edited_scene_root, keep_global, saved_global, index)
+	undo_redo.add_undo_method(self, "_reparent_node_internal", node, old_parent, edited_scene_root, keep_global, saved_global, old_index)
+	return true
+
+func _reparent_node_internal(node: Node, new_parent: Node, edited_scene_root: Node, keep_global: bool, saved_global, index: int) -> void:
+	var current_parent = node.get_parent()
+	if current_parent:
+		current_parent.remove_child(node)
+	new_parent.add_child(node)
+	if index >= 0:
+		new_parent.move_child(node, index)
+	_set_owner_recursive(node, edited_scene_root)
+	if keep_global and saved_global != null:
+		_set_global_transform_variant(node, saved_global)
+
+func _set_owner_recursive(node: Node, owner: Node) -> void:
+	node.owner = owner
+	for child in node.get_children():
+		if child is Node:
+			_set_owner_recursive(child, owner)
+
+func _get_global_transform_variant(node: Node):
+	if node is Node2D:
+		return node.global_transform
+	if node is Node3D:
+		return node.global_transform
+	return null
+
+func _set_global_transform_variant(node: Node, value) -> void:
+	if node is Node2D:
+		node.global_transform = value
+	elif node is Node3D:
+		node.global_transform = value
+
+func _apply_create_node_immediate(edited_scene_root: Node, op: Dictionary, errors: Array) -> bool:
+	var parent_path: String = op.get("parent_path", "/root")
+	var node_type: String = op.get("node_type", "Node")
+	var node_name: String = op.get("node_name", "")
+	var properties: Dictionary = op.get("properties", {})
+	var set_owner: bool = op.get("set_owner", true)
+	
+	if node_name.is_empty():
+		errors.append("create_node: node_name cannot be empty")
+		return false
+	
+	if not ClassDB.class_exists(node_type) or not ClassDB.can_instantiate(node_type):
+		errors.append("create_node: invalid node_type: %s" % node_type)
+		return false
+	
+	var parent = _get_editor_node(parent_path)
+	if not parent:
+		errors.append("create_node: parent not found: %s" % parent_path)
+		return false
+	
+	if parent.get_node_or_null(node_name) != null:
+		errors.append("create_node: node already exists under parent: %s" % node_name)
+		return false
+	
+	var node = ClassDB.instantiate(node_type)
+	node.name = node_name
+	parent.add_child(node)
+	if set_owner:
+		_set_owner_recursive(node, edited_scene_root)
+	
+	for key in properties.keys():
+		var property_name = str(key)
+		var parsed_value = _parse_property_value(properties[key])
+		if property_name in node:
+			node.set(property_name, parsed_value)
+	
+	return true
+
+func _apply_delete_node_immediate(edited_scene_root: Node, op: Dictionary, errors: Array) -> bool:
+	var node_path: String = op.get("node_path", "")
+	if node_path.is_empty():
+		errors.append("delete_node: node_path cannot be empty")
+		return false
+	
+	var node = _get_editor_node(node_path)
+	if not node:
+		errors.append("delete_node: node not found: %s" % node_path)
+		return false
+	
+	if node == edited_scene_root:
+		errors.append("delete_node: cannot delete root node")
+		return false
+	
+	var parent = node.get_parent()
+	if not parent:
+		errors.append("delete_node: node has no parent")
+		return false
+	
+	parent.remove_child(node)
+	node.queue_free()
+	return true
+
+func _apply_set_property_immediate(op: Dictionary, errors: Array) -> bool:
+	var node_path: String = op.get("node_path", "")
+	var property_name: String = op.get("property", "")
+	var value = op.get("value")
+	
+	if node_path.is_empty() or property_name.is_empty():
+		errors.append("set_property: node_path and property are required")
+		return false
+	
+	var node = _get_editor_node(node_path)
+	if not node:
+		errors.append("set_property: node not found: %s" % node_path)
+		return false
+	
+	if not property_name in node:
+		errors.append("set_property: property does not exist: %s" % property_name)
+		return false
+	
+	var parsed_value = _parse_property_value(value)
+	node.set(property_name, parsed_value)
+	return true
+
+func _apply_rename_node_immediate(op: Dictionary, errors: Array) -> bool:
+	var node_path: String = op.get("node_path", "")
+	var new_name: String = op.get("new_name", "")
+	
+	if node_path.is_empty() or new_name.is_empty():
+		errors.append("rename_node: node_path and new_name are required")
+		return false
+	
+	var node = _get_editor_node(node_path)
+	if not node:
+		errors.append("rename_node: node not found: %s" % node_path)
+		return false
+	
+	var parent = node.get_parent()
+	if parent and parent.get_node_or_null(new_name) != null:
+		errors.append("rename_node: sibling already exists with name: %s" % new_name)
+		return false
+	
+	node.name = new_name
+	return true
+
+func _apply_reparent_node_immediate(edited_scene_root: Node, op: Dictionary, errors: Array) -> bool:
+	var node_path: String = op.get("node_path", "")
+	var new_parent_path: String = op.get("new_parent_path", "")
+	var keep_global: bool = op.get("keep_global_transform", false)
+	var index = op.get("index", -1)
+	
+	if node_path.is_empty() or new_parent_path.is_empty():
+		errors.append("reparent_node: node_path and new_parent_path are required")
+		return false
+	
+	var node = _get_editor_node(node_path)
+	if not node:
+		errors.append("reparent_node: node not found: %s" % node_path)
+		return false
+	
+	if node == edited_scene_root:
+		errors.append("reparent_node: cannot reparent root node")
+		return false
+	
+	var new_parent = _get_editor_node(new_parent_path)
+	if not new_parent:
+		errors.append("reparent_node: new parent not found: %s" % new_parent_path)
+		return false
+	
+	var saved_global = null
+	if keep_global:
+		saved_global = _get_global_transform_variant(node)
+	
+	_reparent_node_internal(node, new_parent, edited_scene_root, keep_global, saved_global, index)
+	return true
 
 func _save_scene(client_id: int, params: Dictionary, command_id: String) -> void:
 	var path = params.get("path", "")

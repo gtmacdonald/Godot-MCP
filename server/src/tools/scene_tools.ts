@@ -24,6 +24,43 @@ interface CreateResourceParams {
   properties?: Record<string, any>;
 }
 
+type ScenePatchOperation =
+  | {
+      op: 'create_node';
+      parent_path?: string;
+      node_type?: string;
+      node_name: string;
+      properties?: Record<string, any>;
+      set_owner?: boolean;
+    }
+  | {
+      op: 'delete_node';
+      node_path: string;
+    }
+  | {
+      op: 'set_property';
+      node_path: string;
+      property: string;
+      value: any;
+    }
+  | {
+      op: 'rename_node';
+      node_path: string;
+      new_name: string;
+    }
+  | {
+      op: 'reparent_node';
+      node_path: string;
+      new_parent_path: string;
+      keep_global_transform?: boolean;
+      index?: number;
+    };
+
+interface ApplyScenePatchParams {
+  operations: ScenePatchOperation[];
+  strict?: boolean;
+}
+
 /**
  * Definition for scene tools - operations that manipulate Godot scenes
  */
@@ -161,6 +198,59 @@ export function createSceneTools(getConnection: GetConnection = getGodotConnecti
         return `Created ${resource_type} resource at ${result.resource_path}`;
       } catch (error) {
         throw new Error(`Failed to create resource: ${(error as Error).message}`);
+      }
+    },
+  },
+
+  {
+    name: 'apply_scene_patch',
+    description: 'Apply a sequence of node operations to the currently edited scene',
+    parameters: z.object({
+      operations: z.array(z.discriminatedUnion('op', [
+        z.object({
+          op: z.literal('create_node'),
+          parent_path: z.string().optional().describe('Parent node path (default: "/root")'),
+          node_type: z.string().optional().describe('Node type to create (default: "Node")'),
+          node_name: z.string().describe('Name for the new node'),
+          properties: z.record(z.any()).optional().describe('Optional properties to set after creation'),
+          set_owner: z.boolean().optional().describe('Whether to set owner for serialization (default: true)'),
+        }),
+        z.object({
+          op: z.literal('delete_node'),
+          node_path: z.string().describe('Path to the node to delete'),
+        }),
+        z.object({
+          op: z.literal('set_property'),
+          node_path: z.string().describe('Path to the node to edit'),
+          property: z.string().describe('Property name to set'),
+          value: z.any().describe('New value for the property'),
+        }),
+        z.object({
+          op: z.literal('rename_node'),
+          node_path: z.string().describe('Path to the node to rename'),
+          new_name: z.string().describe('New node name'),
+        }),
+        z.object({
+          op: z.literal('reparent_node'),
+          node_path: z.string().describe('Path to the node to move'),
+          new_parent_path: z.string().describe('New parent node path'),
+          keep_global_transform: z.boolean().optional().describe('Preserve global transform while reparenting'),
+          index: z.number().int().nonnegative().optional().describe('Optional child index under new parent'),
+        }),
+      ])).min(1),
+      strict: z.boolean().optional().describe('If true, stop on first error (default: true)'),
+    }),
+    execute: async ({ operations, strict = true }: ApplyScenePatchParams): Promise<string> => {
+      const godot = getConnection();
+
+      try {
+        const result = await godot.sendCommand<CommandResult>('apply_scene_patch', { operations, strict });
+        const errors: string[] = Array.isArray(result.errors) ? result.errors : [];
+        let msg = `Applied ${result.applied}/${result.total} operations`;
+        if (errors.length) msg += ` (${errors.length} errors)`;
+        return msg;
+      } catch (error) {
+        throw new Error(`Failed to apply scene patch: ${(error as Error).message}`);
       }
     },
   },

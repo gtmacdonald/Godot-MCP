@@ -222,6 +222,20 @@ Create a new resource in the project.
 Create a StyleBoxFlat resource at "res://resources/button_style.tres" with a blue background color.
 ```
 
+### apply_scene_patch
+Apply a sequence of node operations to the currently edited scene (intended as a safer alternative to rewriting `.tscn` text).
+
+**Parameters:**
+- `operations` - Array of patch operations (see below)
+- `strict` (optional) - Stop on first error (default: true)
+
+**Supported operations:**
+- `create_node` (`parent_path`, `node_type`, `node_name`, `properties?`)
+- `delete_node` (`node_path`)
+- `set_property` (`node_path`, `property`, `value`)
+- `rename_node` (`node_path`, `new_name`)
+- `reparent_node` (`node_path`, `new_parent_path`, `keep_global_transform?`, `index?`)
+
 ## Editor Tools
 
 ### execute_editor_script

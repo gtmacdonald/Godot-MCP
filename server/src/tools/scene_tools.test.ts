@@ -51,4 +51,28 @@ describe('sceneTools', () => {
     expect(result).toContain('Godot Version: 4.2.1');
     expect(result).toContain('Current Scene: res://TestScene.tscn');
   });
+
+  it('apply_scene_patch passes operations through and formats summary', async () => {
+    sendCommand.mockResolvedValue({ applied: 2, total: 2, errors: [] });
+
+    const tools = createSceneTools(getConnection);
+    const tool = tools.find(t => t.name === 'apply_scene_patch')!;
+
+    const result = await tool.execute({
+      strict: true,
+      operations: [
+        { op: 'create_node', parent_path: '/root', node_type: 'Node2D', node_name: 'Foo' },
+        { op: 'set_property', node_path: '/root/Foo', property: 'name', value: 'Foo' },
+      ],
+    } as any);
+
+    expect(sendCommand).toHaveBeenCalledWith('apply_scene_patch', {
+      strict: true,
+      operations: [
+        { op: 'create_node', parent_path: '/root', node_type: 'Node2D', node_name: 'Foo' },
+        { op: 'set_property', node_path: '/root/Foo', property: 'name', value: 'Foo' },
+      ],
+    });
+    expect(result).toBe('Applied 2/2 operations');
+  });
 });
