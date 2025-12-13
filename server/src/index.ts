@@ -10,7 +10,9 @@ import {
   sceneListResource, 
   sceneStructureResource,
   sceneContentTemplate,
-  sceneStructureTemplate
+  sceneStructureTemplate,
+  editedSceneStructureResource,
+  editedSceneStructureTemplate
 } from './resources/scene_resources.js';
 import { 
   scriptResource, 
@@ -59,6 +61,7 @@ async function main() {
   server.addResource(selectedNodeResource);
   server.addResource(currentScriptResource);
   server.addResource(sceneStructureResource);
+  server.addResource(editedSceneStructureResource);
   server.addResource(scriptResource);
   server.addResource(scriptMetadataResource);
 
@@ -67,6 +70,7 @@ async function main() {
   server.addResourceTemplate(scriptMetadataTemplate);
   server.addResourceTemplate(sceneContentTemplate);
   server.addResourceTemplate(sceneStructureTemplate);
+  server.addResourceTemplate(editedSceneStructureTemplate);
   server.addResourceTemplate(resourceTextTemplate);
 
   // Try to connect to Godot

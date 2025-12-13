@@ -4,6 +4,8 @@ import {
   createSceneStructureResource,
   createSceneContentTemplate,
   createSceneStructureTemplate,
+  createEditedSceneStructureResource,
+  createEditedSceneStructureTemplate,
 } from './scene_resources.js';
 import {
   createScriptListResource,
@@ -68,6 +70,25 @@ describe('resources', () => {
       path: 'res://a.tscn',
     });
     expect(JSON.parse(out.text)).toEqual({ path: 'res://a.tscn', structure: { name: 'Root' } });
+  });
+
+  it('editedSceneStructureResource loads edited snapshot with ids', async () => {
+    sendCommand.mockResolvedValue({ scene_path: 'res://x.tscn', structure: { id: '1' } });
+    const res = createEditedSceneStructureResource(getConnection);
+    const out = await res.load();
+    expect(sendCommand).toHaveBeenCalledWith('get_edited_scene_structure', { ensure_ids: true });
+    expect(JSON.parse(out.text)).toEqual({ scene_path: 'res://x.tscn', structure: { id: '1' } });
+  });
+
+  it('editedSceneStructureTemplate passes property list', async () => {
+    sendCommand.mockResolvedValue({ ok: true });
+    const tpl = createEditedSceneStructureTemplate(getConnection);
+    await tpl.load({ properties_csv: 'position, rotation' } as any);
+    expect(sendCommand).toHaveBeenCalledWith('get_edited_scene_structure', {
+      ensure_ids: true,
+      include_properties: true,
+      properties: ['position', 'rotation'],
+    });
   });
 
   it('scriptListResource splits gd/cs', async () => {

@@ -75,6 +75,26 @@ export function createSceneStructureResource(getConnection: GetConnection = getG
 export const sceneStructureResource: Resource = createSceneStructureResource();
 
 /**
+ * Resource that provides the currently edited scene structure (includes stable node ids).
+ */
+export function createEditedSceneStructureResource(
+  getConnection: GetConnection = getGodotConnection,
+): Resource {
+  return {
+    uri: 'godot/scene/edited',
+    name: 'Godot Edited Scene Structure',
+    mimeType: 'application/json',
+    async load() {
+      const godot = getConnection();
+      const result = await godot.sendCommand('get_edited_scene_structure', { ensure_ids: true });
+      return { text: JSON.stringify(result) };
+    },
+  };
+}
+
+export const editedSceneStructureResource: Resource = createEditedSceneStructureResource();
+
+/**
  * Resource template that provides raw scene text by path.
  */
 export function createSceneContentTemplate(
@@ -151,3 +171,39 @@ export function createSceneStructureTemplate(
 }
 
 export const sceneStructureTemplate: ResourceTemplate = createSceneStructureTemplate();
+
+/**
+ * Resource template to include selective properties for the edited scene snapshot.
+ * `properties_csv` is a comma-separated list of property names to include.
+ */
+export function createEditedSceneStructureTemplate(
+  getConnection: GetConnection = getGodotConnection,
+): ResourceTemplate {
+  return {
+    uriTemplate: 'godot/scene/edited/{properties_csv}',
+    name: 'Godot Edited Scene Structure (with properties)',
+    mimeType: 'application/json',
+    arguments: [
+      {
+        name: 'properties_csv',
+        description: 'Comma-separated property names (e.g. "position,rotation,scale")',
+        required: true,
+      },
+    ],
+    async load({ properties_csv }: { properties_csv: string }) {
+      const godot = getConnection();
+      const properties = properties_csv
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+      const result = await godot.sendCommand('get_edited_scene_structure', {
+        ensure_ids: true,
+        include_properties: properties.length > 0,
+        properties,
+      });
+      return { text: JSON.stringify(result) };
+    },
+  };
+}
+
+export const editedSceneStructureTemplate: ResourceTemplate = createEditedSceneStructureTemplate();

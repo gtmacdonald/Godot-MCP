@@ -107,6 +107,7 @@ Static resources (no parameters):
 
 - `godot/editor/current_script` - Currently edited script content and metadata.
 - `godot/scene/current` - Current scene structure.
+- `godot/scene/edited` - Currently edited scene snapshot (includes stable node ids).
 - `godot/scenes` - List of all scenes in the project.
 - `godot/scripts` - List of all scripts in the project.
 - `godot/project/structure` - Directory and file counts.
@@ -123,6 +124,8 @@ Dynamic resources (templates):
 - `godot/scene/{path}` - Read raw `.tscn/.scn` text by path.  
   Example: `@mcp godot-mcp read godot/scene/res://scenes/main.tscn`
 - `godot/scene/{path}/structure` - Read scene structure by path.
+- `godot/scene/edited/{properties_csv}` - Edited scene snapshot including selected properties.  
+  Example: `@mcp godot-mcp read godot/scene/edited/position,rotation`
 - `godot/resource/{path}` - Read text-based Godot resources (e.g., `.tres`) by path.
 
 ### Command Categories:

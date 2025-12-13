@@ -26,6 +26,7 @@ Resources are read-only endpoints. Some are fixed, others are parameterized temp
 - `godot/scene/{path}` - Raw scene text by path.  
   Example: `@mcp godot-mcp read godot/scene/res://scenes/main.tscn`
 - `godot/scene/{path}/structure` - Scene structure by path.
+- `godot/scene/edited/{properties_csv}` - Edited scene snapshot including selected properties (comma-separated).
 - `godot/resource/{path}` - Text-based resource content by path (e.g., `.tres`).
 
 ## Node Tools
