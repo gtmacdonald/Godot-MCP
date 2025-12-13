@@ -253,6 +253,8 @@ When `diff_properties` is enabled, the server requests a lightweight property sn
 
 For reliable moves/renames across parents, include stable `id` values from `get_edited_scene_structure` in your desired tree. The server requests Godot to ensure IDs are present (`ensure_ids: true`).
 
+IDs are persisted by adding the node to a persistent group named `godot_mcp_id:<id>` (stored in the `.tscn`), so they remain stable across editor restarts and scene reloads.
+
 ## Editor Tools
 
 ### execute_editor_script

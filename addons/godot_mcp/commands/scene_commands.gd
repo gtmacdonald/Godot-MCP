@@ -2,7 +2,7 @@
 class_name MCPSceneCommands
 extends MCPBaseCommandProcessor
 
-const MCP_ID_META_KEY := "godot_mcp_id"
+const MCP_ID_GROUP_PREFIX := "godot_mcp_id:"
 
 func process_command(client_id: int, command_type: String, params: Dictionary, command_id: String) -> bool:
 	match command_type:
@@ -92,8 +92,10 @@ func _get_node_structure_for_patch(node: Node, rel_path: String, include_propert
 	
 	if ensure_ids:
 		structure["id"] = _get_or_create_mcp_id(node)
-	elif node.has_meta(MCP_ID_META_KEY):
-		structure["id"] = node.get_meta(MCP_ID_META_KEY)
+	else:
+		var existing_id := _get_mcp_id(node)
+		if not existing_id.is_empty():
+			structure["id"] = existing_id
 	
 	if include_properties and properties.size() > 0:
 		var out_props := {}
@@ -112,14 +114,31 @@ func _get_node_structure_for_patch(node: Node, rel_path: String, include_propert
 	return structure
 
 func _get_or_create_mcp_id(node: Node) -> String:
-	if node.has_meta(MCP_ID_META_KEY):
-		return str(node.get_meta(MCP_ID_META_KEY))
+	var existing_id := _get_mcp_id(node)
+	if not existing_id.is_empty():
+		return existing_id
 	
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
 	var id := "%d-%d-%d" % [Time.get_ticks_usec(), rng.randi(), node.get_instance_id()]
-	node.set_meta(MCP_ID_META_KEY, id)
+	_set_mcp_id(node, id)
 	return id
+
+func _get_mcp_id(node: Node) -> String:
+	for group_name in node.get_groups():
+		var g := str(group_name)
+		if g.begins_with(MCP_ID_GROUP_PREFIX):
+			return g.trim_prefix(MCP_ID_GROUP_PREFIX)
+	return ""
+
+func _set_mcp_id(node: Node, id: String) -> void:
+	# Remove any previous id groups to avoid duplication.
+	for group_name in node.get_groups():
+		var g := str(group_name)
+		if g.begins_with(MCP_ID_GROUP_PREFIX):
+			node.remove_from_group(group_name)
+	# Persist = true so it is serialized into the scene file.
+	node.add_to_group(MCP_ID_GROUP_PREFIX + id, true)
 
 func _apply_scene_patch(client_id: int, params: Dictionary, command_id: String) -> void:
 	var operations: Array = params.get("operations", [])
@@ -251,7 +270,7 @@ func _queue_create_node(undo_redo, edited_scene_root: Node, op: Dictionary, erro
 	
 	var node = ClassDB.instantiate(node_type)
 	node.name = node_name
-	node.set_meta(MCP_ID_META_KEY, _get_or_create_mcp_id(node))
+	_set_mcp_id(node, _get_or_create_mcp_id(node))
 	
 	undo_redo.add_do_method(parent, "add_child", node)
 	undo_redo.add_undo_method(parent, "remove_child", node)
@@ -437,7 +456,7 @@ func _apply_create_node_immediate(edited_scene_root: Node, op: Dictionary, error
 	
 	var node = ClassDB.instantiate(node_type)
 	node.name = node_name
-	node.set_meta(MCP_ID_META_KEY, _get_or_create_mcp_id(node))
+	_set_mcp_id(node, _get_or_create_mcp_id(node))
 	parent.add_child(node)
 	if set_owner:
 		_set_owner_recursive(node, edited_scene_root)
