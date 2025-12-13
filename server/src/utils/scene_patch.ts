@@ -47,11 +47,14 @@ export type ScenePatchOperation =
 export type GenerateScenePatchOptions = {
   allow_delete?: boolean;
   strict_types?: boolean;
+  detect_renames?: boolean;
+  reorder_children?: boolean;
 };
 
 type GenerateScenePatchResult = {
   operations: ScenePatchOperation[];
   errors: string[];
+  aliases: Record<string, string>;
 };
 
 function childMap(node: SceneTreeNode): Map<string, SceneTreeNode> {
@@ -77,39 +80,139 @@ export function generateScenePatch(
 ): GenerateScenePatchResult {
   const allowDelete = options.allow_delete ?? false;
   const strictTypes = options.strict_types ?? true;
+  const detectRenames = options.detect_renames ?? false;
+  const reorderChildren = options.reorder_children ?? false;
 
   const operations: ScenePatchOperation[] = [];
   const errors: string[] = [];
+  const aliases: Record<string, string> = {};
 
-  const walk = (existingParent: SceneTreeNode | null, parentPath: string, desired: DesiredSceneNode) => {
-    const existing = existingParent ? childMap(existingParent).get(desired.name) : null;
-    const desiredType = desired.type ?? 'Node';
-    const nodePath = `${parentPath}/${desired.name}`;
+  const renameSubtree = (
+    node: SceneTreeNode,
+    oldPrefix: string,
+    newPrefix: string,
+    newName: string,
+  ): SceneTreeNode => {
+    const fixPath = (path: string) =>
+      path === oldPrefix ? newPrefix : path.replace(oldPrefix + '/', newPrefix + '/');
+    return {
+      ...node,
+      name: newName,
+      path: fixPath(node.path),
+      children: (node.children ?? []).map(child =>
+        renameSubtree(child, oldPrefix, newPrefix, child.name),
+      ),
+    };
+  };
 
-    if (!existing) {
-      operations.push({
-        op: 'create_node',
-        parent_path: parentPath,
-        node_type: desiredType,
-        node_name: desired.name,
-        properties: desired.properties ?? {},
-        set_owner: true,
-      });
+  const emitDeletes = (node: SceneTreeNode) => {
+    for (const child of node.children ?? []) emitDeletes(child);
+    operations.push({ op: 'delete_node', node_path: node.path });
+  };
 
-      for (const child of desired.children ?? []) {
-        walk(null, nodePath, child);
+  function diffChildren(existingParent: SceneTreeNode, parentPath: string, desiredChildren: DesiredSceneNode[]) {
+    const existingChildren = existingParent.children ?? [];
+    const existingByName = childMap(existingParent);
+    const desiredByName = desiredChildMap({ children: desiredChildren });
+
+    const matchedExistingNames = new Set<string>();
+    const usedForRename = new Set<string>();
+    const desiredOrder = desiredChildren.map(c => c.name);
+
+    const resolveExistingForDesired = (desiredChild: DesiredSceneNode): SceneTreeNode | null => {
+      const direct = existingByName.get(desiredChild.name);
+      if (direct) {
+        matchedExistingNames.add(direct.name);
+        return direct;
       }
 
-      return;
+      if (!detectRenames) return null;
+      if (!desiredChild.type) return null;
+
+      const candidates = existingChildren.filter(ex => {
+        if (matchedExistingNames.has(ex.name)) return false;
+        if (usedForRename.has(ex.name)) return false;
+        if (desiredByName.has(ex.name)) return false;
+        if (ex.type !== desiredChild.type) return false;
+        if (desiredChild.children && ex.children && desiredChild.children.length !== ex.children.length) return false;
+        return true;
+      });
+
+      if (candidates.length !== 1) return null;
+
+      const ex = candidates[0];
+      usedForRename.add(ex.name);
+
+      const oldPath = `${parentPath}/${ex.name}`;
+      const newPath = `${parentPath}/${desiredChild.name}`;
+      operations.push({ op: 'rename_node', node_path: oldPath, new_name: desiredChild.name });
+      aliases[oldPath] = newPath;
+
+      const renamed = renameSubtree(ex, oldPath, newPath, desiredChild.name);
+      matchedExistingNames.add(ex.name);
+      existingByName.set(desiredChild.name, renamed);
+      return renamed;
+    };
+
+    for (const desiredChild of desiredChildren) {
+      const desiredType = desiredChild.type ?? 'Node';
+      const nodePath = `${parentPath}/${desiredChild.name}`;
+
+      const existing = resolveExistingForDesired(desiredChild);
+      if (!existing) {
+        operations.push({
+          op: 'create_node',
+          parent_path: parentPath,
+          node_type: desiredType,
+          node_name: desiredChild.name,
+          properties: desiredChild.properties ?? {},
+          set_owner: true,
+        });
+
+        for (const child of desiredChild.children ?? []) {
+          const dummy: SceneTreeNode = { name: desiredChild.name, type: desiredType, path: nodePath, children: [] };
+          diffChildren(dummy, nodePath, [child]);
+        }
+        continue;
+      }
+
+      diffNode(existing, nodePath, desiredChild);
     }
 
-    if (desired.type && existing.type !== desired.type) {
-      const msg = `Type mismatch at ${nodePath}: existing=${existing.type} desired=${desired.type}`;
+    if (reorderChildren && desiredOrder.length > 1) {
+      const currentOrder = existingChildren.map(c => (aliases[`${parentPath}/${c.name}`] ? aliases[`${parentPath}/${c.name}`].split('/').pop()! : c.name));
+      const currentIndex = new Map<string, number>();
+      for (let i = 0; i < currentOrder.length; i++) currentIndex.set(currentOrder[i], i);
+      for (let i = 0; i < desiredOrder.length; i++) {
+        const name = desiredOrder[i];
+        if (currentIndex.get(name) === i) continue;
+        operations.push({
+          op: 'reparent_node',
+          node_path: `${parentPath}/${name}`,
+          new_parent_path: parentPath,
+          index: i,
+          keep_global_transform: false,
+        });
+      }
+    }
+
+    if (allowDelete) {
+      for (const existingChild of existingChildren) {
+        if (matchedExistingNames.has(existingChild.name)) continue;
+        if (desiredByName.has(existingChild.name)) continue;
+        emitDeletes(existingChild);
+      }
+    }
+  }
+
+  function diffNode(existingNode: SceneTreeNode, nodePath: string, desiredNode: DesiredSceneNode) {
+    if (desiredNode.type && existingNode.type !== desiredNode.type) {
+      const msg = `Type mismatch at ${nodePath}: existing=${existingNode.type} desired=${desiredNode.type}`;
       errors.push(msg);
       if (strictTypes) return;
     }
 
-    for (const [propertyName, value] of Object.entries(desired.properties ?? {})) {
+    for (const [propertyName, value] of Object.entries(desiredNode.properties ?? {})) {
       operations.push({
         op: 'set_property',
         node_path: nodePath,
@@ -118,50 +221,18 @@ export function generateScenePatch(
       });
     }
 
-    const desiredChildren = desiredChildMap(desired);
-    const existingChildren = childMap(existing);
+    diffChildren(existingNode, nodePath, desiredNode.children ?? []);
+  }
 
-    for (const child of desired.children ?? []) {
-      walk(existing, nodePath, child);
-    }
-
-    if (allowDelete) {
-      const deleteMissing = (ex: SceneTreeNode) => {
-        for (const c of ex.children ?? []) deleteMissing(c);
-        operations.push({ op: 'delete_node', node_path: ex.path });
-      };
-
-      for (const [existingName, existingNode] of existingChildren.entries()) {
-        if (!desiredChildren.has(existingName)) {
-          deleteMissing(existingNode);
-        }
-      }
-    }
-  };
-
-  const existingByName = childMap(existingRoot);
   const desiredByName = desiredChildMap(desiredRoot);
 
-  for (const child of desiredRoot.children ?? []) {
-    const existing = existingByName.get(child.name) ?? null;
-    walk(existingRoot, '/root', child);
-    if (!existing && child.children?.length) {
-      // already handled via walk(null,..) when missing
-    }
-  }
+  diffChildren(existingRoot, '/root', desiredRoot.children ?? []);
 
   if (allowDelete) {
-    const deleteMissing = (ex: SceneTreeNode) => {
-      for (const c of ex.children ?? []) deleteMissing(c);
-      operations.push({ op: 'delete_node', node_path: ex.path });
-    };
-    for (const [existingName, existingNode] of existingByName.entries()) {
-      if (!desiredByName.has(existingName)) {
-        deleteMissing(existingNode);
-      }
+    for (const child of existingRoot.children ?? []) {
+      if (!desiredByName.has(child.name)) emitDeletes(child);
     }
   }
 
-  return { operations, errors };
+  return { operations, errors, aliases };
 }
-

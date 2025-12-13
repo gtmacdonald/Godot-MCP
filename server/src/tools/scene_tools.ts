@@ -34,6 +34,9 @@ interface GenerateScenePatchParams {
   desired: { children: DesiredSceneNode[] };
   allow_delete?: boolean;
   strict_types?: boolean;
+  detect_renames?: boolean;
+  reorder_children?: boolean;
+  diff_properties?: boolean;
   apply?: boolean;
 }
 
@@ -249,9 +252,20 @@ export function createSceneTools(getConnection: GetConnection = getGodotConnecti
       }),
       allow_delete: z.boolean().optional().describe('If true, delete nodes not present in desired (default: false)'),
       strict_types: z.boolean().optional().describe('If true, error on node type mismatches (default: true)'),
+      detect_renames: z.boolean().optional().describe('If true, attempt safe rename detection within a parent (default: false)'),
+      reorder_children: z.boolean().optional().describe('If true, attempt to reorder children to match desired order (default: false)'),
+      diff_properties: z.boolean().optional().describe('If true, only emit set_property when value differs (default: true)'),
       apply: z.boolean().optional().describe('If true, also apply the generated patch (default: false)'),
     }),
-    execute: async ({ desired, allow_delete = false, strict_types = true, apply = false }: GenerateScenePatchParams): Promise<string> => {
+    execute: async ({
+      desired,
+      allow_delete = false,
+      strict_types = true,
+      detect_renames = false,
+      reorder_children = false,
+      diff_properties = true,
+      apply = false,
+    }: GenerateScenePatchParams): Promise<string> => {
       const godot = getConnection();
 
       try {
@@ -260,13 +274,68 @@ export function createSceneTools(getConnection: GetConnection = getGodotConnecti
           {},
         );
 
-        const { operations, errors } = generateScenePatch(edited.structure, desired, {
+        const stableStringify = (value: any): string => {
+          if (value === undefined) return 'undefined';
+          if (value === null || typeof value !== 'object') return JSON.stringify(value);
+          if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+          const keys = Object.keys(value).sort();
+          return `{${keys.map(k => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
+        };
+
+        const { operations: generated, errors, aliases } = generateScenePatch(edited.structure, desired, {
           allow_delete,
           strict_types,
+          detect_renames,
+          reorder_children,
         });
 
         if (strict_types && errors.length) {
           throw new Error(errors[0]);
+        }
+
+        const reverseAliases = new Map<string, string>();
+        for (const [oldPath, newPath] of Object.entries(aliases)) reverseAliases.set(newPath, oldPath);
+
+        let operations = generated;
+
+        if (diff_properties) {
+          const nodePropsCache = new Map<string, Record<string, any> | null>();
+
+          const getNodeProps = async (nodePath: string): Promise<Record<string, any> | null> => {
+            if (nodePropsCache.has(nodePath)) return nodePropsCache.get(nodePath)!;
+            try {
+              const result = await godot.sendCommand<CommandResult>('get_node_properties', { node_path: nodePath });
+              const props = (result as any)?.properties ?? null;
+              nodePropsCache.set(nodePath, props);
+              return props;
+            } catch {
+              nodePropsCache.set(nodePath, null);
+              return null;
+            }
+          };
+
+          const filtered: ScenePatchOperation[] = [];
+          for (const op of operations) {
+            if (op.op !== 'set_property') {
+              filtered.push(op);
+              continue;
+            }
+
+            const queryPath = reverseAliases.get(op.node_path) ?? op.node_path;
+            const props = await getNodeProps(queryPath);
+            if (!props || !(op.property in props)) {
+              filtered.push(op);
+              continue;
+            }
+
+            const current = props[op.property];
+            if (stableStringify(current) === stableStringify(op.value)) {
+              continue;
+            }
+
+            filtered.push(op);
+          }
+          operations = filtered;
         }
 
         let output = `Generated ${operations.length} operations for ${edited.scene_path}`;

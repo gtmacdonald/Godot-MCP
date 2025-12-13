@@ -243,6 +243,9 @@ Generate an `apply_scene_patch` operation list by diffing the currently edited s
 - `desired.children` - Desired node tree (by name, optional `type`, optional `properties`)
 - `allow_delete` (optional) - Delete nodes not present in desired (default: false)
 - `strict_types` (optional) - Error on node type mismatches (default: true)
+- `detect_renames` (optional) - Attempt to detect simple renames within a parent (default: false)
+- `reorder_children` (optional) - Attempt to reorder children to match `desired.children` order (default: false)
+- `diff_properties` (optional) - Only emit `set_property` ops when a value differs (default: true)
 - `apply` (optional) - Also apply the generated patch (default: false)
 
 ## Editor Tools

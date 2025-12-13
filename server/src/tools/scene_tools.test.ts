@@ -114,4 +114,112 @@ describe('sceneTools', () => {
     expect(out).toContain('Generated 1 operations');
     expect(out).toContain('Apply result: 1/1');
   });
+
+  it('generate_scene_patch filters set_property when value is unchanged', async () => {
+    sendCommand
+      .mockResolvedValueOnce({
+        scene_path: 'res://scenes/main.tscn',
+        structure: {
+          name: 'Root',
+          type: 'Node',
+          path: '/root',
+          children: [{ name: 'Player', type: 'Node2D', path: '/root/Player', children: [] }],
+        },
+      })
+      .mockResolvedValueOnce({
+        properties: { health: 5 },
+      });
+
+    const tools = createSceneTools(getConnection);
+    const tool = tools.find(t => t.name === 'generate_scene_patch')!;
+
+    const out = await tool.execute({
+      desired: { children: [{ name: 'Player', type: 'Node2D', properties: { health: 5 } }] },
+      apply: true,
+    } as any);
+
+    expect(sendCommand).toHaveBeenNthCalledWith(1, 'get_edited_scene_structure', {});
+    expect(sendCommand).toHaveBeenNthCalledWith(2, 'get_node_properties', { node_path: '/root/Player' });
+    expect(sendCommand).not.toHaveBeenCalledWith('apply_scene_patch', expect.anything());
+    expect(out).toContain('Generated 0 operations');
+  });
+
+  it('generate_scene_patch can detect a simple rename within a parent', async () => {
+    sendCommand
+      .mockResolvedValueOnce({
+        scene_path: 'res://scenes/main.tscn',
+        structure: {
+          name: 'Root',
+          type: 'Node',
+          path: '/root',
+          children: [{ name: 'OldName', type: 'Node2D', path: '/root/OldName', children: [] }],
+        },
+      })
+      .mockResolvedValueOnce({ applied: 1, total: 1 });
+
+    const tools = createSceneTools(getConnection);
+    const tool = tools.find(t => t.name === 'generate_scene_patch')!;
+
+    const out = await tool.execute({
+      desired: { children: [{ name: 'NewName', type: 'Node2D' }] },
+      detect_renames: true,
+      apply: true,
+      diff_properties: false,
+    } as any);
+
+    expect(sendCommand).toHaveBeenNthCalledWith(1, 'get_edited_scene_structure', {});
+    expect(sendCommand).toHaveBeenNthCalledWith(2, 'apply_scene_patch', {
+      operations: [{ op: 'rename_node', node_path: '/root/OldName', new_name: 'NewName' }],
+      strict: true,
+    });
+    expect(out).toContain('Generated 1 operations');
+  });
+
+  it('generate_scene_patch can emit reorder operations', async () => {
+    sendCommand
+      .mockResolvedValueOnce({
+        scene_path: 'res://scenes/main.tscn',
+        structure: {
+          name: 'Root',
+          type: 'Node',
+          path: '/root',
+          children: [
+            { name: 'B', type: 'Node', path: '/root/B', children: [] },
+            { name: 'A', type: 'Node', path: '/root/A', children: [] },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({ applied: 2, total: 2 });
+
+    const tools = createSceneTools(getConnection);
+    const tool = tools.find(t => t.name === 'generate_scene_patch')!;
+
+    await tool.execute({
+      desired: { children: [{ name: 'A', type: 'Node' }, { name: 'B', type: 'Node' }] },
+      reorder_children: true,
+      apply: true,
+      diff_properties: false,
+    } as any);
+
+    expect(sendCommand).toHaveBeenNthCalledWith(1, 'get_edited_scene_structure', {});
+    expect(sendCommand).toHaveBeenNthCalledWith(2, 'apply_scene_patch', {
+      operations: [
+        {
+          op: 'reparent_node',
+          node_path: '/root/A',
+          new_parent_path: '/root',
+          index: 0,
+          keep_global_transform: false,
+        },
+        {
+          op: 'reparent_node',
+          node_path: '/root/B',
+          new_parent_path: '/root',
+          index: 1,
+          keep_global_transform: false,
+        },
+      ],
+      strict: true,
+    });
+  });
 });
