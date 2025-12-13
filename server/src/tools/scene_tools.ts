@@ -269,9 +269,23 @@ export function createSceneTools(getConnection: GetConnection = getGodotConnecti
       const godot = getConnection();
 
       try {
+        const collectDesiredPropertyNames = (nodes: DesiredSceneNode[], into: Set<string>) => {
+          for (const node of nodes) {
+            for (const key of Object.keys(node.properties ?? {})) into.add(key);
+            collectDesiredPropertyNames(node.children ?? [], into);
+          }
+        };
+
+        const desiredPropertyNames = new Set<string>();
+        if (diff_properties) {
+          collectDesiredPropertyNames(desired.children ?? [], desiredPropertyNames);
+        }
+
         const edited = await godot.sendCommand<{ scene_path: string; structure: SceneTreeNode }>(
           'get_edited_scene_structure',
-          {},
+          diff_properties && desiredPropertyNames.size > 0
+            ? { include_properties: true, properties: Array.from(desiredPropertyNames) }
+            : {},
         );
 
         const stableStringify = (value: any): string => {
@@ -299,17 +313,25 @@ export function createSceneTools(getConnection: GetConnection = getGodotConnecti
         let operations = generated;
 
         if (diff_properties) {
-          const nodePropsCache = new Map<string, Record<string, any> | null>();
+          const propsByPath = new Map<string, Record<string, any>>();
+          const buildPropsIndex = (node: any) => {
+            if (node && typeof node === 'object') {
+              if (typeof node.path === 'string' && node.properties && typeof node.properties === 'object') {
+                propsByPath.set(node.path, node.properties);
+              }
+              for (const child of node.children ?? []) buildPropsIndex(child);
+            }
+          };
+          buildPropsIndex(edited.structure as any);
 
           const getNodeProps = async (nodePath: string): Promise<Record<string, any> | null> => {
-            if (nodePropsCache.has(nodePath)) return nodePropsCache.get(nodePath)!;
+            if (propsByPath.has(nodePath)) return propsByPath.get(nodePath)!;
             try {
               const result = await godot.sendCommand<CommandResult>('get_node_properties', { node_path: nodePath });
               const props = (result as any)?.properties ?? null;
-              nodePropsCache.set(nodePath, props);
+              if (props) propsByPath.set(nodePath, props);
               return props;
             } catch {
-              nodePropsCache.set(nodePath, null);
               return null;
             }
           };

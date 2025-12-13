@@ -248,6 +248,8 @@ Generate an `apply_scene_patch` operation list by diffing the currently edited s
 - `diff_properties` (optional) - Only emit `set_property` ops when a value differs (default: true)
 - `apply` (optional) - Also apply the generated patch (default: false)
 
+When `diff_properties` is enabled, the server requests a lightweight property snapshot from Godot for only the properties present in `desired` (to avoid fetching full property dumps for every node).
+
 ## Editor Tools
 
 ### execute_editor_script

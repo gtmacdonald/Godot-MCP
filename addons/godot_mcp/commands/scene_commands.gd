@@ -71,24 +71,34 @@ func _get_edited_scene_structure(client_id: int, _params: Dictionary, command_id
 	if scene_path.is_empty():
 		scene_path = "Untitled"
 	
-	var structure = _get_node_structure_for_patch(edited_scene_root, "/root")
+	var include_properties: bool = _params.get("include_properties", false)
+	var properties: Array = _params.get("properties", [])
+	var structure = _get_node_structure_for_patch(edited_scene_root, "/root", include_properties, properties)
 	
 	_send_success(client_id, {
 		"scene_path": scene_path,
 		"structure": structure
 	}, command_id)
 
-func _get_node_structure_for_patch(node: Node, rel_path: String) -> Dictionary:
+func _get_node_structure_for_patch(node: Node, rel_path: String, include_properties: bool, properties: Array) -> Dictionary:
 	var structure = {
 		"name": node.name,
 		"type": node.get_class(),
 		"path": rel_path
 	}
 	
+	if include_properties and properties.size() > 0:
+		var out_props := {}
+		for prop in properties:
+			var prop_name := str(prop)
+			if prop_name in node:
+				out_props[prop_name] = node.get(prop_name)
+		structure["properties"] = out_props
+	
 	var children: Array = []
 	for child in node.get_children():
 		if child is Node:
-			children.append(_get_node_structure_for_patch(child, rel_path + "/" + str(child.name)))
+			children.append(_get_node_structure_for_patch(child, rel_path + "/" + str(child.name), include_properties, properties))
 	
 	structure["children"] = children
 	return structure

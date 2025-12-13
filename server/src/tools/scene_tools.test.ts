@@ -123,11 +123,16 @@ describe('sceneTools', () => {
           name: 'Root',
           type: 'Node',
           path: '/root',
-          children: [{ name: 'Player', type: 'Node2D', path: '/root/Player', children: [] }],
+          children: [
+            {
+              name: 'Player',
+              type: 'Node2D',
+              path: '/root/Player',
+              properties: { health: 5 },
+              children: [],
+            },
+          ],
         },
-      })
-      .mockResolvedValueOnce({
-        properties: { health: 5 },
       });
 
     const tools = createSceneTools(getConnection);
@@ -138,8 +143,10 @@ describe('sceneTools', () => {
       apply: true,
     } as any);
 
-    expect(sendCommand).toHaveBeenNthCalledWith(1, 'get_edited_scene_structure', {});
-    expect(sendCommand).toHaveBeenNthCalledWith(2, 'get_node_properties', { node_path: '/root/Player' });
+    expect(sendCommand).toHaveBeenNthCalledWith(1, 'get_edited_scene_structure', {
+      include_properties: true,
+      properties: ['health'],
+    });
     expect(sendCommand).not.toHaveBeenCalledWith('apply_scene_patch', expect.anything());
     expect(out).toContain('Generated 0 operations');
   });
