@@ -97,7 +97,7 @@ describe('sceneTools', () => {
       apply: true,
     } as any);
 
-    expect(sendCommand).toHaveBeenNthCalledWith(1, 'get_edited_scene_structure', {});
+    expect(sendCommand).toHaveBeenNthCalledWith(1, 'get_edited_scene_structure', { ensure_ids: true });
     expect(sendCommand).toHaveBeenNthCalledWith(2, 'apply_scene_patch', {
       operations: [
         {
@@ -146,6 +146,7 @@ describe('sceneTools', () => {
     expect(sendCommand).toHaveBeenNthCalledWith(1, 'get_edited_scene_structure', {
       include_properties: true,
       properties: ['health'],
+      ensure_ids: true,
     });
     expect(sendCommand).not.toHaveBeenCalledWith('apply_scene_patch', expect.anything());
     expect(out).toContain('Generated 0 operations');
@@ -174,7 +175,7 @@ describe('sceneTools', () => {
       diff_properties: false,
     } as any);
 
-    expect(sendCommand).toHaveBeenNthCalledWith(1, 'get_edited_scene_structure', {});
+    expect(sendCommand).toHaveBeenNthCalledWith(1, 'get_edited_scene_structure', { ensure_ids: true });
     expect(sendCommand).toHaveBeenNthCalledWith(2, 'apply_scene_patch', {
       operations: [{ op: 'rename_node', node_path: '/root/OldName', new_name: 'NewName' }],
       strict: true,
@@ -208,7 +209,7 @@ describe('sceneTools', () => {
       diff_properties: false,
     } as any);
 
-    expect(sendCommand).toHaveBeenNthCalledWith(1, 'get_edited_scene_structure', {});
+    expect(sendCommand).toHaveBeenNthCalledWith(1, 'get_edited_scene_structure', { ensure_ids: true });
     expect(sendCommand).toHaveBeenNthCalledWith(2, 'apply_scene_patch', {
       operations: [
         {
@@ -223,6 +224,58 @@ describe('sceneTools', () => {
           node_path: '/root/B',
           new_parent_path: '/root',
           index: 1,
+          keep_global_transform: false,
+        },
+      ],
+      strict: true,
+    });
+  });
+
+  it('generate_scene_patch can move a node across parents using stable id', async () => {
+    sendCommand
+      .mockResolvedValueOnce({
+        scene_path: 'res://scenes/main.tscn',
+        structure: {
+          name: 'Root',
+          type: 'Node',
+          path: '/root',
+          children: [
+            {
+              name: 'A',
+              type: 'Node',
+              path: '/root/A',
+              children: [
+                { id: 'n1', name: 'Thing', type: 'Node2D', path: '/root/A/Thing', children: [] },
+              ],
+            },
+            { name: 'B', type: 'Node', path: '/root/B', children: [] },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({ applied: 1, total: 1 });
+
+    const tools = createSceneTools(getConnection);
+    const tool = tools.find(t => t.name === 'generate_scene_patch')!;
+
+    await tool.execute({
+      desired: {
+        children: [
+          { name: 'A', type: 'Node', children: [] },
+          { name: 'B', type: 'Node', children: [{ id: 'n1', name: 'Thing', type: 'Node2D' }] },
+        ],
+      },
+      apply: true,
+      allow_delete: true,
+      diff_properties: false,
+    } as any);
+
+    expect(sendCommand).toHaveBeenNthCalledWith(1, 'get_edited_scene_structure', { ensure_ids: true });
+    expect(sendCommand).toHaveBeenNthCalledWith(2, 'apply_scene_patch', {
+      operations: [
+        {
+          op: 'reparent_node',
+          node_path: '/root/A/Thing',
+          new_parent_path: '/root/B',
           keep_global_transform: false,
         },
       ],

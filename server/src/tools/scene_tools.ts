@@ -48,6 +48,7 @@ type GetConnection = () => GodotConnection;
 export function createSceneTools(getConnection: GetConnection = getGodotConnection): MCPTool[] {
   const desiredNodeSchema: z.ZodType<DesiredSceneNode> = z.lazy(() =>
     z.object({
+      id: z.string().optional().describe('Stable node id from get_edited_scene_structure (recommended for moves/renames)'),
       name: z.string(),
       type: z.string().optional(),
       properties: z.record(z.any()).optional(),
@@ -284,8 +285,8 @@ export function createSceneTools(getConnection: GetConnection = getGodotConnecti
         const edited = await godot.sendCommand<{ scene_path: string; structure: SceneTreeNode }>(
           'get_edited_scene_structure',
           diff_properties && desiredPropertyNames.size > 0
-            ? { include_properties: true, properties: Array.from(desiredPropertyNames) }
-            : {},
+            ? { include_properties: true, properties: Array.from(desiredPropertyNames), ensure_ids: true }
+            : { ensure_ids: true },
         );
 
         const stableStringify = (value: any): string => {

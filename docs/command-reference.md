@@ -240,7 +240,7 @@ Apply a sequence of node operations to the currently edited scene (intended as a
 Generate an `apply_scene_patch` operation list by diffing the currently edited scene against a desired tree.
 
 **Parameters:**
-- `desired.children` - Desired node tree (by name, optional `type`, optional `properties`)
+- `desired.children` - Desired node tree (by `name`, optional `id`, optional `type`, optional `properties`)
 - `allow_delete` (optional) - Delete nodes not present in desired (default: false)
 - `strict_types` (optional) - Error on node type mismatches (default: true)
 - `detect_renames` (optional) - Attempt to detect simple renames within a parent (default: false)
@@ -249,6 +249,8 @@ Generate an `apply_scene_patch` operation list by diffing the currently edited s
 - `apply` (optional) - Also apply the generated patch (default: false)
 
 When `diff_properties` is enabled, the server requests a lightweight property snapshot from Godot for only the properties present in `desired` (to avoid fetching full property dumps for every node).
+
+For reliable moves/renames across parents, include stable `id` values from `get_edited_scene_structure` in your desired tree. The server requests Godot to ensure IDs are present (`ensure_ids: true`).
 
 ## Editor Tools
 

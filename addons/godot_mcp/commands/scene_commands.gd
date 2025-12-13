@@ -2,6 +2,8 @@
 class_name MCPSceneCommands
 extends MCPBaseCommandProcessor
 
+const MCP_ID_META_KEY := "godot_mcp_id"
+
 func process_command(client_id: int, command_type: String, params: Dictionary, command_id: String) -> bool:
 	match command_type:
 		"get_edited_scene_structure":
@@ -73,19 +75,25 @@ func _get_edited_scene_structure(client_id: int, _params: Dictionary, command_id
 	
 	var include_properties: bool = _params.get("include_properties", false)
 	var properties: Array = _params.get("properties", [])
-	var structure = _get_node_structure_for_patch(edited_scene_root, "/root", include_properties, properties)
+	var ensure_ids: bool = _params.get("ensure_ids", true)
+	var structure = _get_node_structure_for_patch(edited_scene_root, "/root", include_properties, properties, ensure_ids)
 	
 	_send_success(client_id, {
 		"scene_path": scene_path,
 		"structure": structure
 	}, command_id)
 
-func _get_node_structure_for_patch(node: Node, rel_path: String, include_properties: bool, properties: Array) -> Dictionary:
+func _get_node_structure_for_patch(node: Node, rel_path: String, include_properties: bool, properties: Array, ensure_ids: bool) -> Dictionary:
 	var structure = {
 		"name": node.name,
 		"type": node.get_class(),
 		"path": rel_path
 	}
+	
+	if ensure_ids:
+		structure["id"] = _get_or_create_mcp_id(node)
+	elif node.has_meta(MCP_ID_META_KEY):
+		structure["id"] = node.get_meta(MCP_ID_META_KEY)
 	
 	if include_properties and properties.size() > 0:
 		var out_props := {}
@@ -98,10 +106,20 @@ func _get_node_structure_for_patch(node: Node, rel_path: String, include_propert
 	var children: Array = []
 	for child in node.get_children():
 		if child is Node:
-			children.append(_get_node_structure_for_patch(child, rel_path + "/" + str(child.name), include_properties, properties))
+			children.append(_get_node_structure_for_patch(child, rel_path + "/" + str(child.name), include_properties, properties, ensure_ids))
 	
 	structure["children"] = children
 	return structure
+
+func _get_or_create_mcp_id(node: Node) -> String:
+	if node.has_meta(MCP_ID_META_KEY):
+		return str(node.get_meta(MCP_ID_META_KEY))
+	
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	var id := "%d-%d-%d" % [Time.get_ticks_usec(), rng.randi(), node.get_instance_id()]
+	node.set_meta(MCP_ID_META_KEY, id)
+	return id
 
 func _apply_scene_patch(client_id: int, params: Dictionary, command_id: String) -> void:
 	var operations: Array = params.get("operations", [])
@@ -233,6 +251,7 @@ func _queue_create_node(undo_redo, edited_scene_root: Node, op: Dictionary, erro
 	
 	var node = ClassDB.instantiate(node_type)
 	node.name = node_name
+	node.set_meta(MCP_ID_META_KEY, _get_or_create_mcp_id(node))
 	
 	undo_redo.add_do_method(parent, "add_child", node)
 	undo_redo.add_undo_method(parent, "remove_child", node)
@@ -418,6 +437,7 @@ func _apply_create_node_immediate(edited_scene_root: Node, op: Dictionary, error
 	
 	var node = ClassDB.instantiate(node_type)
 	node.name = node_name
+	node.set_meta(MCP_ID_META_KEY, _get_or_create_mcp_id(node))
 	parent.add_child(node)
 	if set_owner:
 		_set_owner_recursive(node, edited_scene_root)

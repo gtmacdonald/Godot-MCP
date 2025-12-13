@@ -1,11 +1,14 @@
 export type SceneTreeNode = {
+  id?: string;
   name: string;
   type: string;
   path: string; // expected "/root/..."
+  properties?: Record<string, any>;
   children?: SceneTreeNode[];
 };
 
 export type DesiredSceneNode = {
+  id?: string;
   name: string;
   type?: string;
   properties?: Record<string, any>;
@@ -86,6 +89,28 @@ export function generateScenePatch(
   const operations: ScenePatchOperation[] = [];
   const errors: string[] = [];
   const aliases: Record<string, string> = {};
+  const matchedIds = new Set<string>();
+  const desiredIds = new Set<string>();
+
+  const collectDesiredIds = (nodes: DesiredSceneNode[]) => {
+    for (const node of nodes) {
+      if (node.id) desiredIds.add(node.id);
+      collectDesiredIds(node.children ?? []);
+    }
+  };
+  collectDesiredIds(desiredRoot.children ?? []);
+
+  const existingById = new Map<string, SceneTreeNode>();
+  const currentPathById = new Map<string, string>();
+
+  const indexExisting = (node: SceneTreeNode) => {
+    if (node.id) {
+      existingById.set(node.id, node);
+      currentPathById.set(node.id, node.path);
+    }
+    for (const child of node.children ?? []) indexExisting(child);
+  };
+  indexExisting(existingRoot);
 
   const renameSubtree = (
     node: SceneTreeNode,
@@ -106,6 +131,8 @@ export function generateScenePatch(
   };
 
   const emitDeletes = (node: SceneTreeNode) => {
+    if (node.id && matchedIds.has(node.id)) return;
+    if (node.id && desiredIds.has(node.id)) return;
     for (const child of node.children ?? []) emitDeletes(child);
     operations.push({ op: 'delete_node', node_path: node.path });
   };
@@ -120,9 +147,43 @@ export function generateScenePatch(
     const desiredOrder = desiredChildren.map(c => c.name);
 
     const resolveExistingForDesired = (desiredChild: DesiredSceneNode): SceneTreeNode | null => {
+      if (desiredChild.id) {
+        const node = existingById.get(desiredChild.id) ?? null;
+        if (!node) return null;
+
+        matchedIds.add(desiredChild.id);
+
+        const originalPath = currentPathById.get(desiredChild.id) ?? node.path;
+        let currentPath = originalPath;
+        const currentParentPath = currentPath.substring(0, currentPath.lastIndexOf('/'));
+
+        if (currentParentPath !== parentPath) {
+          operations.push({
+            op: 'reparent_node',
+            node_path: currentPath,
+            new_parent_path: parentPath,
+            keep_global_transform: false,
+          });
+          currentPath = `${parentPath}/${currentPath.split('/').pop()!}`;
+          aliases[originalPath] = currentPath;
+          currentPathById.set(desiredChild.id, currentPath);
+        }
+
+        if (node.name !== desiredChild.name) {
+          const beforeRename = currentPath;
+          operations.push({ op: 'rename_node', node_path: currentPath, new_name: desiredChild.name });
+          currentPath = `${parentPath}/${desiredChild.name}`;
+          aliases[beforeRename] = currentPath;
+          currentPathById.set(desiredChild.id, currentPath);
+        }
+
+        return node;
+      }
+
       const direct = existingByName.get(desiredChild.name);
       if (direct) {
         matchedExistingNames.add(direct.name);
+        if (direct.id) matchedIds.add(direct.id);
         return direct;
       }
 
@@ -150,6 +211,7 @@ export function generateScenePatch(
 
       const renamed = renameSubtree(ex, oldPath, newPath, desiredChild.name);
       matchedExistingNames.add(ex.name);
+      if (ex.id) matchedIds.add(ex.id);
       existingByName.set(desiredChild.name, renamed);
       return renamed;
     };
@@ -200,6 +262,8 @@ export function generateScenePatch(
       for (const existingChild of existingChildren) {
         if (matchedExistingNames.has(existingChild.name)) continue;
         if (desiredByName.has(existingChild.name)) continue;
+        if (existingChild.id && matchedIds.has(existingChild.id)) continue;
+        if (existingChild.id && desiredIds.has(existingChild.id)) continue;
         emitDeletes(existingChild);
       }
     }
