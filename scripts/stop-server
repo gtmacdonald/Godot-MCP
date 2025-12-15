@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+pid_file="$repo_root/.godot-mcp-server.pid"
+
+if [[ ! -f "$pid_file" ]]; then
+  echo "server not running (no pid file)" >&2
+  exit 0
+fi
+
+pid="$(cat "$pid_file" || true)"
+if [[ -z "${pid:-}" ]]; then
+  rm -f "$pid_file"
+  echo "server not running (empty pid file)" >&2
+  exit 0
+fi
+
+if ! kill -0 "$pid" 2>/dev/null; then
+  rm -f "$pid_file"
+  echo "server not running (stale pid $pid)" >&2
+  exit 0
+fi
+
+echo "stopping server (pid $pid)" >&2
+kill "$pid" 2>/dev/null || true
+
+for _ in {1..50}; do
+  if ! kill -0 "$pid" 2>/dev/null; then
+    rm -f "$pid_file"
+    echo "stopped" >&2
+    exit 0
+  fi
+  sleep 0.1
+done
+
+echo "server did not exit; sending SIGKILL" >&2
+kill -9 "$pid" 2>/dev/null || true
+rm -f "$pid_file"
+echo "stopped" >&2

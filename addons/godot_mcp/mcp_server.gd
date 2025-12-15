@@ -7,6 +7,7 @@ var handshake_timeout := 3000 # ms
 var debug_mode := true
 var log_detailed := true  # Enable detailed logging
 var command_handler = null  # Command handler reference
+var _panel: Control = null  # UI panel instance
 
 signal client_connected(id)
 signal client_disconnected(id)
@@ -49,12 +50,18 @@ func _enter_tree():
 	print("Connecting command handler signals...")
 	self.connect("command_received", Callable(command_handler, "_handle_command"))
 	
-	# Start WebSocket server
-	var err = tcp_server.listen(port)
-	if err == OK:
-		print("Listening on port", port)
-		set_process(true)
+	# Add the MCP panel (bottom panel)
+	var panel_scene := load("res://addons/godot_mcp/ui/mcp_panel.tscn")
+	if panel_scene:
+		_panel = panel_scene.instantiate()
+		_panel.websocket_server = self
+		add_control_to_bottom_panel(_panel, "Godot MCP")
 	else:
+		printerr("Failed to load MCP panel scene")
+	
+	# Start WebSocket server
+	var err := start_server()
+	if err != OK:
 		printerr("Failed to listen on port", port, "error:", err)
 	
 	print("=== MCP SERVER INITIALIZED ===\n")
@@ -68,6 +75,11 @@ func _exit_tree():
 		tcp_server.stop()
 	
 	clients.clear()
+	
+	if _panel:
+		remove_control_from_bottom_panel(_panel)
+		_panel.queue_free()
+		_panel = null
 	
 	print("=== MCP SERVER SHUTDOWN ===")
 
@@ -257,11 +269,32 @@ func send_response(client_id: int, response: Dictionary) -> int:
 func is_server_active() -> bool:
 	return tcp_server.is_listening()
 
+func start_server() -> int:
+	if is_server_active():
+		return ERR_ALREADY_IN_USE
+	
+	var err := tcp_server.listen(port)
+	if err == OK:
+		print("Listening on port", port)
+		set_process(true)
+	
+	return err
+
 func stop_server() -> void:
 	if is_server_active():
 		tcp_server.stop()
 		clients.clear()
+		set_process(false)
 		print("MCP WebSocket server stopped")
 		
 func get_port() -> int:
 	return port
+
+func set_port(new_port: int) -> void:
+	if is_server_active():
+		push_error("Cannot change port while server is active")
+		return
+	port = new_port
+
+func get_client_count() -> int:
+	return clients.size()

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+pid_file="$repo_root/.godot-mcp-server.pid"
+log_file="$repo_root/.godot-mcp-server.log"
+
+if [[ -f "$pid_file" ]]; then
+  existing_pid="$(cat "$pid_file" || true)"
+  if [[ -n "${existing_pid:-}" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+    echo "server already running (pid $existing_pid)" >&2
+    exit 0
+  fi
+  rm -f "$pid_file"
+fi
+
+if [[ ! -d "server/node_modules" ]]; then
+  echo "error: server dependencies not installed. Run: npm -C server install" >&2
+  exit 1
+fi
+
+if [[ ! -f "server/dist/index.js" ]]; then
+  npm -C server run build
+fi
+
+echo "starting server (logs: $log_file)" >&2
+nohup node "server/dist/index.js" >>"$log_file" 2>&1 &
+echo "$!" >"$pid_file"
+echo "started (pid $(cat "$pid_file"))" >&2

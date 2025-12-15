@@ -2,56 +2,55 @@
 class_name MCPProjectCommands
 extends MCPBaseCommandProcessor
 
-	func process_command(client_id: int, command_type: String, params: Dictionary, command_id: String) -> bool:
-		match command_type:
-			"get_project_info":
-				_get_project_info(client_id, params, command_id)
-				return true
-			"get_file_text":
-				_get_file_text(client_id, params, command_id)
-				return true
-			"list_project_files":
-				_list_project_files(client_id, params, command_id)
-				return true
+func process_command(client_id: int, command_type: String, params: Dictionary, command_id: String) -> bool:
+	match command_type:
+		"get_project_info":
+			_get_project_info(client_id, params, command_id)
+			return true
 		"get_project_structure":
 			_get_project_structure(client_id, params, command_id)
 			return true
 		"get_project_settings":
 			_get_project_settings(client_id, params, command_id)
 			return true
-			"list_project_resources":
-				_list_project_resources(client_id, params, command_id)
-				return true
-		return false  # Command not handled
+		"list_project_files":
+			_list_project_files(client_id, params, command_id)
+			return true
+		"list_project_resources":
+			_list_project_resources(client_id, params, command_id)
+			return true
+		"get_file_text":
+			_get_file_text(client_id, params, command_id)
+			return true
+	return false  # Command not handled
 
-	func _get_file_text(client_id: int, params: Dictionary, command_id: String) -> void:
-		var path = params.get("path", "")
-		
-		if path.is_empty():
-			return _send_error(client_id, "File path cannot be empty", command_id)
-		
-		if not path.begins_with("res://"):
-			path = "res://" + path
-		
-		if not FileAccess.file_exists(path):
-			return _send_error(client_id, "File not found: " + path, command_id)
-		
-		var ext = path.get_extension().to_lower()
-		var allowed = ["tscn", "scn", "tres", "gd", "cs", "cfg", "json", "txt", "import", "md"]
-		if not (ext in allowed):
-			return _send_error(client_id, "File type not supported for text read: ." + ext, command_id)
-		
-		var file = FileAccess.open(path, FileAccess.READ)
-		if file == null:
-			return _send_error(client_id, "Failed to open file: " + path, command_id)
-		
-		var content = file.get_as_text()
-		file = null
-		
-		_send_success(client_id, {
-			"path": path,
-			"content": content
-		}, command_id)
+func _get_file_text(client_id: int, params: Dictionary, command_id: String) -> void:
+	var path = params.get("path", "")
+	if path.is_empty():
+		return _send_error(client_id, "File path cannot be empty", command_id)
+	
+	if not path.begins_with("res://"):
+		path = "res://" + path
+	
+	if not FileAccess.file_exists(path):
+		return _send_error(client_id, "File not found: " + path, command_id)
+	
+	var ext = path.get_extension().to_lower()
+	var allowed = ["tscn", "scn", "tres", "gd", "cs", "cfg", "json", "txt", "import", "md"]
+	if not (ext in allowed):
+		return _send_error(client_id, "File type not supported for text read: ." + ext, command_id)
+	
+	var file = FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return _send_error(client_id, "Failed to open file: " + path, command_id)
+	
+	var content = file.get_as_text()
+	file = null
+	
+	_send_success(client_id, {
+		"path": path,
+		"content": content
+	}, command_id)
 
 func _get_project_info(client_id: int, _params: Dictionary, command_id: String) -> void:
 	var project_name = ProjectSettings.get_setting("application/config/name", "Untitled Project")

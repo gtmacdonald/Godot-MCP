@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+if [[ ! -f "server/package.json" ]]; then
+  echo "error: expected server/package.json (run from the repo root)" >&2
+  exit 1
+fi
+
+if [[ ! -d "server/node_modules" ]]; then
+  echo "error: server dependencies not installed. Run: npm -C server install" >&2
+  exit 1
+fi
+
+npm -C server run build
