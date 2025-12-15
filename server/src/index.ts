@@ -73,16 +73,18 @@ async function main() {
   server.addResourceTemplate(editedSceneStructureTemplate);
   server.addResourceTemplate(resourceTextTemplate);
 
-  // Try to connect to Godot
-  try {
-    const godot = getGodotConnection();
-    await godot.connect();
-    console.error('Successfully connected to Godot WebSocket server');
-  } catch (error) {
-    const err = error as Error;
-    console.warn(`Could not connect to Godot: ${err.message}`);
-    console.warn('Will retry connection when commands are executed');
-  }
+  // Try to connect to Godot in the background (tools/resources will also reconnect on demand).
+  const godot = getGodotConnection();
+  void godot
+    .connect()
+    .then(() => {
+      console.error('Successfully connected to Godot WebSocket server');
+    })
+    .catch((error) => {
+      const err = error as Error;
+      console.warn(`Could not connect to Godot (startup): ${err.message}`);
+      console.warn('Will retry connection when commands are executed');
+    });
 
   // Start the server
   server.start({

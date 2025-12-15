@@ -1,6 +1,5 @@
 import { Resource, ResourceTemplate } from 'fastmcp';
 import { getGodotConnection, GodotConnection } from '../utils/godot_connection.js';
-import { z } from 'zod';
 
 /**
  * Resource that provides a list of all scenes in the project
@@ -108,22 +107,21 @@ export function createSceneContentTemplate(
       {
         name: 'path',
         description: 'Scene path (e.g. "res://scenes/main.tscn")',
-        required: true,
-        complete: async (value) => {
+        complete: async (value: string) => {
           const godot = getConnection();
           try {
             const result = await godot.sendCommand('list_project_files', {
               extensions: ['.tscn', '.scn'],
             });
             const files: string[] = result?.files ?? [];
-            return { values: files.filter(f => f.includes(value ?? '')) };
+            return { values: files.filter((filePath) => filePath.includes(value ?? '')) };
           } catch {
             return { values: [] };
           }
         },
       },
     ],
-    async load({ path }: { path: string }) {
+    async load({ path }) {
       const godot = getConnection();
       const result = await godot.sendCommand('get_scene_text', { path });
       return { text: result.content ?? '' };
@@ -147,22 +145,21 @@ export function createSceneStructureTemplate(
       {
         name: 'path',
         description: 'Scene path (e.g. "res://scenes/main.tscn")',
-        required: true,
-        complete: async (value) => {
+        complete: async (value: string) => {
           const godot = getConnection();
           try {
             const result = await godot.sendCommand('list_project_files', {
               extensions: ['.tscn', '.scn'],
             });
             const files: string[] = result?.files ?? [];
-            return { values: files.filter(f => f.includes(value ?? '')) };
+            return { values: files.filter((filePath) => filePath.includes(value ?? '')) };
           } catch {
             return { values: [] };
           }
         },
       },
     ],
-    async load({ path }: { path: string }) {
+    async load({ path }) {
       const godot = getConnection();
       const result = await godot.sendCommand('get_scene_structure', { path });
       return { text: JSON.stringify(result) };
@@ -187,10 +184,9 @@ export function createEditedSceneStructureTemplate(
       {
         name: 'properties_csv',
         description: 'Comma-separated property names (e.g. "position,rotation,scale")',
-        required: true,
       },
     ],
-    async load({ properties_csv }: { properties_csv: string }) {
+    async load({ properties_csv }) {
       const godot = getConnection();
       const properties = properties_csv
         .split(',')

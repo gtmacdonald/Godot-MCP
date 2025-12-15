@@ -1,4 +1,4 @@
-import { Resource } from 'fastmcp';
+import { Resource, ResourceTemplate } from 'fastmcp';
 import { getGodotConnection, GodotConnection } from '../utils/godot_connection.js';
 
 /**
@@ -102,22 +102,21 @@ export function createResourceTextTemplate(
       {
         name: 'path',
         description: 'Resource path (e.g. "res://resources/style.tres")',
-        required: true,
-        complete: async (value) => {
+        complete: async (value: string) => {
           const godot = getConnection();
           try {
             const result = await godot.sendCommand('list_project_files', {
               extensions: ['.tres', '.res'],
             });
             const files: string[] = result?.files ?? [];
-            return { values: files.filter(f => f.includes(value ?? '')) };
+            return { values: files.filter((filePath) => filePath.includes(value ?? '')) };
           } catch {
             return { values: [] };
           }
         },
       },
     ],
-    async load({ path }: { path: string }) {
+    async load({ path }) {
       const godot = getConnection();
       const result = await godot.sendCommand('get_file_text', { path });
       return { text: result.content ?? '' };

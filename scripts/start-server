@@ -21,7 +21,7 @@ if [[ ! -d "server/node_modules" ]]; then
   exit 1
 fi
 
-if [[ ! -f "server/dist/index.js" ]]; then
+if [[ ! -f "server/dist/index.js" || ! -f "server/dist/tools/node_tools.js" ]]; then
   npm -C server run build
 fi
 

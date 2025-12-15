@@ -1,6 +1,5 @@
 import { Resource, ResourceTemplate } from 'fastmcp';
 import { getGodotConnection, GodotConnection } from '../utils/godot_connection.js';
-import { z } from 'zod';
 
 /**
  * Resource that provides the content of a specific script
@@ -136,8 +135,7 @@ export function createScriptContentTemplate(
       {
         name: 'path',
         description: 'Script path (e.g. "res://scripts/player.gd")',
-        required: true,
-        complete: async (value) => {
+        complete: async (value: string) => {
           const godot = getConnection();
           try {
             const result = await godot.sendCommand('list_project_files', {
@@ -145,7 +143,7 @@ export function createScriptContentTemplate(
             });
             const files: string[] = result?.files ?? [];
             return {
-              values: files.filter(f => f.includes(value ?? '')),
+              values: files.filter((filePath) => filePath.includes(value ?? '')),
             };
           } catch {
             return { values: [] };
@@ -153,7 +151,7 @@ export function createScriptContentTemplate(
         },
       },
     ],
-    async load({ path }: { path: string }) {
+    async load({ path }) {
       const godot = getConnection();
       const result = await godot.sendCommand('get_script', { script_path: path });
       return {
@@ -187,8 +185,7 @@ export function createScriptMetadataTemplate(
       {
         name: 'path',
         description: 'Script path (e.g. "res://scripts/player.gd")',
-        required: true,
-        complete: async (value) => {
+        complete: async (value: string) => {
           const godot = getConnection();
           try {
             const result = await godot.sendCommand('list_project_files', {
@@ -196,7 +193,7 @@ export function createScriptMetadataTemplate(
             });
             const files: string[] = result?.files ?? [];
             return {
-              values: files.filter(f => f.includes(value ?? '')),
+              values: files.filter((filePath) => filePath.includes(value ?? '')),
             };
           } catch {
             return { values: [] };
@@ -204,7 +201,7 @@ export function createScriptMetadataTemplate(
         },
       },
     ],
-    async load({ path }: { path: string }) {
+    async load({ path }) {
       const godot = getConnection();
       const result = await godot.sendCommand('get_script_metadata', { path });
       return {
