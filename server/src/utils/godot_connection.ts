@@ -25,6 +25,7 @@ export interface GodotCommand {
 export class GodotConnection {
   private ws: WebSocket | null = null;
   private connected = false;
+  private mockMode = false;
   private commandQueue: Map<string, { 
     resolve: (value: any) => void;
     reject: (reason: any) => void;
@@ -45,7 +46,77 @@ export class GodotConnection {
     private maxRetries: number = 3,
     private retryDelay: number = 2000
   ) {
+    this.mockMode = this.url.startsWith('mock://');
     console.error('GodotConnection created with URL:', this.url);
+  }
+
+  private async mockSendCommand<T = any>(type: string, params: Record<string, any> = {}): Promise<T> {
+    switch (type) {
+      case 'get_edited_scene_structure': {
+        const includeProperties = Boolean(params.include_properties);
+        const properties = Array.isArray(params.properties) ? params.properties : [];
+        const outProps =
+          includeProperties && properties.length > 0
+            ? Object.fromEntries(properties.map((p: unknown) => [String(p), 'MOCK']))
+            : undefined;
+
+        return {
+          scene_path: 'res://TestScene.tscn',
+          structure: {
+            name: 'Root',
+            type: 'Node',
+            path: '/root',
+            id: 'root-1',
+            properties: outProps,
+            children: [
+              {
+                name: 'Child',
+                type: 'Node',
+                path: '/root/Child',
+                id: 'child-1',
+                children: [],
+              },
+            ],
+          },
+        } as T;
+      }
+
+      case 'apply_scene_patch': {
+        const operations = Array.isArray(params.operations) ? params.operations : [];
+        return { applied: operations.length, total: operations.length, used_undo_redo: false } as T;
+      }
+
+      case 'get_scene_text': {
+        const p = String(params.path ?? 'res://TestScene.tscn');
+        return { path: p, content: '[gd_scene format=3]\n[node name="Root" type="Node"]\n' } as T;
+      }
+
+      case 'get_scene_structure': {
+        return { root_node: { name: 'Root', type: 'Node', path: '/root' }, nodes: [] } as T;
+      }
+
+      case 'list_project_files': {
+        return { files: ['res://TestScene.tscn', 'res://scripts/player.gd'] } as T;
+      }
+
+      case 'get_file_text': {
+        const p = String(params.path ?? 'res://README.md');
+        return { path: p, content: 'MOCK FILE CONTENT\n' } as T;
+      }
+
+      case 'get_script': {
+        const scriptPath = String(params.script_path ?? 'res://scripts/player.gd');
+        return { script_path: scriptPath, content: '# mock\n' } as T;
+      }
+
+      case 'get_script_metadata': {
+        const scriptPath = String(params.path ?? 'res://scripts/player.gd');
+        return { path: scriptPath, language: 'gdscript' } as T;
+      }
+
+      default:
+        throw new Error(`Mock Godot does not implement command: ${type}`);
+    }
   }
   
   /**
@@ -53,12 +124,17 @@ export class GodotConnection {
    */
   async connect(): Promise<void> {
     if (this.connected) return;
+    if (this.mockMode) {
+      this.connected = true;
+      return;
+    }
     
     let retries = 0;
     
     const tryConnect = (): Promise<void> => {
       return new Promise<void>((resolve, reject) => {
         console.error(`Connecting to Godot WebSocket server at ${this.url}... (Attempt ${retries + 1}/${this.maxRetries + 1})`);
+        let settled = false;
         
         // Use protocol option to match Godot's supported_protocols
         this.ws = new WebSocket(this.url, {
@@ -68,6 +144,8 @@ export class GodotConnection {
         });
         
         this.ws.on('open', () => {
+          if (settled) return;
+          settled = true;
           this.connected = true;
           console.error('Connected to Godot WebSocket server');
           resolve();
@@ -102,8 +180,16 @@ export class GodotConnection {
         this.ws.on('error', (error) => {
           const err = error as Error;
           console.error('WebSocket error:', err);
-          // Don't terminate the connection on error - let the timeout handle it
-          // Just log the error and allow retry mechanism to work
+          if (settled) return;
+          settled = true;
+          clearTimeout(connectionTimeout);
+          try {
+            this.ws?.terminate();
+          } catch {
+            // ignore
+          }
+          this.ws = null;
+          reject(err);
         });
         
         this.ws.on('close', () => {
@@ -120,6 +206,8 @@ export class GodotConnection {
               this.ws.terminate();
               this.ws = null;
             }
+            if (settled) return;
+            settled = true;
             reject(new Error('Connection timeout'));
           }
         }, this.timeout);
@@ -155,6 +243,9 @@ export class GodotConnection {
    * @returns Promise that resolves with the command result
    */
   async sendCommand<T = any>(type: string, params: Record<string, any> = {}): Promise<T> {
+    if (this.mockMode) {
+      return this.mockSendCommand(type, params);
+    }
     if (!this.ws || !this.connected) {
       try {
         await this.connect();
@@ -202,6 +293,10 @@ export class GodotConnection {
    * Disconnects from the Godot WebSocket server
    */
   disconnect(): void {
+    if (this.mockMode) {
+      this.connected = false;
+      return;
+    }
     if (this.ws) {
       // Clear all pending commands
       this.commandQueue.forEach((command, commandId) => {
