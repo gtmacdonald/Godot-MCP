@@ -232,7 +232,8 @@ let connectionInstance: GodotConnection | null = null;
  */
 export function getGodotConnection(): GodotConnection {
   if (!connectionInstance) {
-    connectionInstance = new GodotConnection();
+    const url = process.env.GODOT_WS_URL || 'ws://localhost:9080';
+    connectionInstance = new GodotConnection(url);
   }
   return connectionInstance;
 }

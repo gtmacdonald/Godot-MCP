@@ -5,6 +5,7 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     include: ['src/**/*.test.ts'],
+    exclude: ['src/integration/**'],
     typecheck: {
       tsconfig: './tsconfig.test.json',
     },
@@ -17,4 +18,3 @@ export default defineConfig({
     },
   },
 });
-

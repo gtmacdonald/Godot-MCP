@@ -15,6 +15,7 @@ Run from repo root unless noted:
 - `cd server && npm run build`: compile TypeScript to `server/dist/` via `tsc`.
 - `cd server && npm run dev`: watch `server/src/`, rebuild, and restart (`nodemon`).
 - `cd server && npm run start`: run the compiled MCP server (`node dist/index.js`).
+- `./scripts/mcp ...`: local MCP client for listing/reading/calling against `server/dist/index.js` (see `./scripts/mcp --help`).
 - Godot side: open `project.godot` in the Godot editor and ensure the “Godot MCP” plugin is enabled.
 
 ## Coding Style & Naming Conventions
@@ -33,6 +34,8 @@ Run from repo root unless noted:
 Server tests are set up with Vitest. Run from `server/`:
 
 - `npm test`: run unit tests.
+- `npm run test:integration`: runs MCP integration tests via stdio against a fake local Godot websocket.
+- `GODOT_WS_URL=ws://127.0.0.1:9080 npm run test:integration`: also runs the optional “real Godot” integration test (requires Godot running with the plugin server started).
 - `npm run test:watch`: watch mode.
 - `npm run coverage`: generate coverage in `server/coverage/`.
 

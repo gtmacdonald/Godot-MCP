@@ -10,6 +10,8 @@
     "dev": "nodemon --watch src --exec \"tsc && node dist/index.js\"",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "npm run build && vitest run -c vitest.integration.config.ts",
+    "test:integration:watch": "npm run build && vitest -c vitest.integration.config.ts",
     "coverage": "vitest run --coverage"
   },
   "keywords": [
