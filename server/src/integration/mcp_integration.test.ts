@@ -50,11 +50,26 @@ describe('MCP integration (with mock Godot)', () => {
       expect(parsed.structure.id).toBe('root-1');
       expect(parsed.structure.children[0].id).toBe('child-1');
 
+      const editedWithProps = await client.readResource({ uri: 'godot/scene/edited/position' });
+      const editedWithPropsText = (editedWithProps.contents[0] as any).text as string;
+      const editedWithPropsParsed = JSON.parse(editedWithPropsText);
+      expect(editedWithPropsParsed.structure.properties.position).toBe('MOCK');
+
       const applied = await client.callTool({
         name: 'apply_scene_patch',
         arguments: { operations: [{ op: 'create_node', parent_path: '/root', node_type: 'Node', node_name: 'X' }] },
       });
       expect(applied.content[0].type).toBe('text');
+
+      const patch = await client.callTool({
+        name: 'generate_scene_patch',
+        arguments: {
+          desired: { children: [{ name: 'Child', type: 'Node', id: 'child-1', children: [] }] },
+          apply: false,
+        },
+      });
+      expect(patch.content[0].type).toBe('text');
+      expect((patch.content[0] as any).text).toContain('Generated 0 operations');
     } finally {
       await transport.close();
     }

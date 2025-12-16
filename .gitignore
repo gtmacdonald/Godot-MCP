@@ -18,6 +18,8 @@ npm-debug.log
 dist/
 .godot-mcp-server.pid
 .godot-mcp-server.log
+coverage/
+server/coverage/
 
 # System files
 .DS_Store

@@ -87,9 +87,10 @@ function main() {
             // Resource templates (dynamic resources)
             server.addResourceTemplate(scriptContentTemplate);
             server.addResourceTemplate(scriptMetadataTemplate);
+            // Register specific templates before generic scene-by-path templates.
+            server.addResourceTemplate(editedSceneStructureTemplate);
             server.addResourceTemplate(sceneContentTemplate);
             server.addResourceTemplate(sceneStructureTemplate);
-            server.addResourceTemplate(editedSceneStructureTemplate);
             server.addResourceTemplate(resourceTextTemplate);
             godot = getGodotConnection();
             void godot
