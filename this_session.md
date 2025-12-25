@@ -47,15 +47,31 @@
 
 ### Feature Backlog (New)
 
-#### 1. Game Screenshot System (LLM Instrumentation)
+#### 1. ~~Game Screenshot System (LLM Instrumentation)~~ ✅ COMPLETED
 **Goal:** Capture game screenshots while the game is running, with instrumentation for AI analysis.
 
-**Implementation Plan:**
-- Create `take_game_screenshot` command that captures the active game viewport
-- Add instrumentation data: timestamp, scene path, player state, camera position
-- Support optional metadata annotation for LLM context
-- Output to file or return base64-encoded data for direct analysis
-- Add MCP tool: `capture_game_frame` with options for resolution and region of interest
+**Implementation:**
+- Created `game_screenshot.gd` utility with viewport capture and instrumentation
+- Created `game_commands.gd` command processor with 4 commands
+- Added MCP tools for game screenshots and state queries
+
+**New Files:**
+- `addons/godot_mcp/utils/game_screenshot.gd` - Screenshot capture with instrumentation
+- `addons/godot_mcp/commands/game_commands.gd` - Game command processor
+- `server/src/tools/game_tools.ts` - MCP game tools
+
+**New MCP Tools:**
+- `capture_game_frame` - Capture game viewport with instrumentation data (base64 or file)
+- `capture_node_viewport` - Capture specific node's viewport
+- `save_screenshot` - Save screenshot to file
+- `get_game_state` - Get current game state (playing, scene, FPS)
+
+**Instrumentation Data:**
+- Timestamp, engine version, viewport info
+- Current scene path and type
+- Player detection (health, score, position)
+- Camera detection (position, zoom, enabled/current)
+- Performance metrics (FPS, process time, physics time)
 
 **Use Cases:**
 - Visual debugging during AI-assisted development
@@ -63,7 +79,7 @@
 - Generate documentation screenshots
 - AI vision analysis of game states
 
-#### 2. Runtime Value Update System (No GUI)
+#### 2. Runtime Value Update System (Deferred to Next Version)
 **Goal:** Update game values while running without touching the GUI system.
 
 **Implementation Plan:**
