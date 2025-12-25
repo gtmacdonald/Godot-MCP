@@ -172,6 +172,17 @@ Claude will:
 3. **Iterate**: Have Claude make small changes and test frequently
 4. **Provide context**: Tell Claude about your project structure when relevant
 5. **Accept or modify suggestions**: Claude might suggest alternatives; feel free to go with them or ask for changes
+6. **Prefer IDs for moves/renames**: When patching scenes, use stable `id` values from `godot/scene/edited` so operations keep working after renames or reparenting.
+
+## Ready-to-Use Checklist
+
+Use this quick list to confirm a usable setup.
+
+- Godot project opens and the “Godot MCP” plugin is enabled.
+- Godot MCP panel shows “running” on the expected port (default `9080`).
+- MCP server is running and reachable from your client.
+- `./scripts/mcp list tools` returns tools and `./scripts/mcp read godot/scene/edited` returns a tree with `id` fields.
+- Optional: `GODOT_WS_URL=ws://127.0.0.1:9080 npm -C server run test:integration` passes.
 
 ## Troubleshooting
 

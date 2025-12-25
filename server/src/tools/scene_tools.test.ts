@@ -76,6 +76,43 @@ describe('sceneTools', () => {
     expect(result).toBe('Applied 2/2 operations');
   });
 
+  it('apply_scene_patch resolves id-based selectors before sending to Godot', async () => {
+    sendCommand
+      .mockResolvedValueOnce({
+        structure: {
+          name: 'Root',
+          type: 'Node',
+          path: '/root',
+          id: 'root-1',
+          children: [
+            { name: 'Player', type: 'Node2D', path: '/root/Player', id: 'node-1', children: [] },
+            { name: 'Enemies', type: 'Node2D', path: '/root/Enemies', id: 'node-2', children: [] },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({ applied: 2, total: 2, errors: [] });
+
+    const tools = createSceneTools(getConnection);
+    const tool = tools.find(t => t.name === 'apply_scene_patch')!;
+
+    await tool.execute({
+      strict: true,
+      operations: [
+        { op: 'rename_node', node_id: 'node-1', new_name: 'Hero' },
+        { op: 'reparent_node', node_id: 'node-1', new_parent_id: 'node-2' },
+      ],
+    } as any);
+
+    expect(sendCommand).toHaveBeenNthCalledWith(1, 'get_edited_scene_structure', { ensure_ids: true });
+    expect(sendCommand).toHaveBeenNthCalledWith(2, 'apply_scene_patch', {
+      strict: true,
+      operations: [
+        { op: 'rename_node', node_path: '/root/Player', new_name: 'Hero' },
+        { op: 'reparent_node', node_path: '/root/Hero', new_parent_path: '/root/Enemies' },
+      ],
+    });
+  });
+
   it('generate_scene_patch generates create operations for missing nodes', async () => {
     sendCommand
       .mockResolvedValueOnce({

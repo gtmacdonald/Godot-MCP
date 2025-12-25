@@ -25,8 +25,46 @@ interface CreateResourceParams {
   properties?: Record<string, any>;
 }
 
+type ApplyScenePatchOperation =
+  | {
+      op: 'create_node';
+      parent_path?: string;
+      parent_id?: string;
+      node_type?: string;
+      node_name: string;
+      properties?: Record<string, any>;
+      set_owner?: boolean;
+    }
+  | {
+      op: 'delete_node';
+      node_path?: string;
+      node_id?: string;
+    }
+  | {
+      op: 'set_property';
+      node_path?: string;
+      node_id?: string;
+      property: string;
+      value: any;
+    }
+  | {
+      op: 'rename_node';
+      node_path?: string;
+      node_id?: string;
+      new_name: string;
+    }
+  | {
+      op: 'reparent_node';
+      node_path?: string;
+      node_id?: string;
+      new_parent_path?: string;
+      new_parent_id?: string;
+      keep_global_transform?: boolean;
+      index?: number;
+    };
+
 interface ApplyScenePatchParams {
-  operations: ScenePatchOperation[];
+  operations: ApplyScenePatchOperation[];
   strict?: boolean;
 }
 
@@ -55,6 +93,208 @@ export function createSceneTools(getConnection: GetConnection = getGodotConnecti
       children: z.array(desiredNodeSchema).optional(),
     }),
   );
+
+  const resolveScenePatchOperations = async (
+    godot: GodotConnection,
+    operations: ApplyScenePatchOperation[],
+  ): Promise<ScenePatchOperation[]> => {
+    for (const op of operations) {
+      switch (op.op) {
+        case 'create_node':
+          if (!op.node_name) {
+            throw new Error('create_node requires node_name');
+          }
+          break;
+        case 'delete_node':
+          if (!op.node_path && !op.node_id) {
+            throw new Error('delete_node requires node_path or node_id');
+          }
+          break;
+        case 'set_property':
+          if (!op.node_path && !op.node_id) {
+            throw new Error('set_property requires node_path or node_id');
+          }
+          break;
+        case 'rename_node':
+          if (!op.node_path && !op.node_id) {
+            throw new Error('rename_node requires node_path or node_id');
+          }
+          break;
+        case 'reparent_node':
+          if (!op.node_path && !op.node_id) {
+            throw new Error('reparent_node requires node_path or node_id');
+          }
+          if (!op.new_parent_path && !op.new_parent_id) {
+            throw new Error('reparent_node requires new_parent_path or new_parent_id');
+          }
+          break;
+      }
+    }
+
+    const needsIds = operations.some(
+      op =>
+        (op.op === 'create_node' && !!op.parent_id) ||
+        (op.op !== 'create_node' && 'node_id' in op && !!op.node_id) ||
+        (op.op === 'reparent_node' && !!op.new_parent_id),
+    );
+
+    const normalizeWithoutIds = (op: ApplyScenePatchOperation): ScenePatchOperation => {
+      switch (op.op) {
+        case 'create_node':
+          return {
+            op: 'create_node',
+            parent_path: op.parent_path,
+            node_type: op.node_type,
+            node_name: op.node_name,
+            properties: op.properties,
+            set_owner: op.set_owner,
+          };
+        case 'delete_node':
+          return { op: 'delete_node', node_path: op.node_path ?? '' };
+        case 'set_property':
+          return { op: 'set_property', node_path: op.node_path ?? '', property: op.property, value: op.value };
+        case 'rename_node':
+          return { op: 'rename_node', node_path: op.node_path ?? '', new_name: op.new_name };
+        case 'reparent_node':
+          return {
+            op: 'reparent_node',
+            node_path: op.node_path ?? '',
+            new_parent_path: op.new_parent_path ?? '',
+            keep_global_transform: op.keep_global_transform,
+            index: op.index,
+          };
+      }
+    };
+
+    if (!needsIds) {
+      return operations.map(normalizeWithoutIds);
+    }
+
+    const edited = await godot.sendCommand<{ structure: SceneTreeNode }>('get_edited_scene_structure', {
+      ensure_ids: true,
+    });
+
+    const currentPathById = new Map<string, string>();
+    const indexIds = (node: SceneTreeNode) => {
+      if (node.id) currentPathById.set(node.id, node.path);
+      for (const child of node.children ?? []) indexIds(child);
+    };
+    indexIds(edited.structure);
+
+    const resolveIdToPath = (id: string, label: string): string => {
+      const path = currentPathById.get(id);
+      if (!path) throw new Error(`${label} id not found in edited scene: ${id}`);
+      return path;
+    };
+
+    const resolved: ScenePatchOperation[] = [];
+    for (const op of operations) {
+      switch (op.op) {
+        case 'create_node': {
+          let parentPath = op.parent_path ?? '/root';
+          if (op.parent_id) {
+            const resolvedParentPath = resolveIdToPath(op.parent_id, 'parent');
+            if (op.parent_path && op.parent_path !== resolvedParentPath) {
+              throw new Error(
+                `parent_id ${op.parent_id} resolves to ${resolvedParentPath}, but parent_path was ${op.parent_path}`,
+              );
+            }
+            parentPath = resolvedParentPath;
+          }
+          resolved.push({
+            op: 'create_node',
+            parent_path: parentPath,
+            node_type: op.node_type,
+            node_name: op.node_name,
+            properties: op.properties,
+            set_owner: op.set_owner,
+          });
+          break;
+        }
+        case 'delete_node': {
+          let nodePath = op.node_path ?? '';
+          if (op.node_id) {
+            const resolvedNodePath = resolveIdToPath(op.node_id, 'node');
+            if (op.node_path && op.node_path !== resolvedNodePath) {
+              throw new Error(
+                `node_id ${op.node_id} resolves to ${resolvedNodePath}, but node_path was ${op.node_path}`,
+              );
+            }
+            nodePath = resolvedNodePath;
+            currentPathById.delete(op.node_id);
+          }
+          resolved.push({ op: 'delete_node', node_path: nodePath });
+          break;
+        }
+        case 'set_property': {
+          let nodePath = op.node_path ?? '';
+          if (op.node_id) {
+            const resolvedNodePath = resolveIdToPath(op.node_id, 'node');
+            if (op.node_path && op.node_path !== resolvedNodePath) {
+              throw new Error(
+                `node_id ${op.node_id} resolves to ${resolvedNodePath}, but node_path was ${op.node_path}`,
+              );
+            }
+            nodePath = resolvedNodePath;
+          }
+          resolved.push({ op: 'set_property', node_path: nodePath, property: op.property, value: op.value });
+          break;
+        }
+        case 'rename_node': {
+          let nodePath = op.node_path ?? '';
+          if (op.node_id) {
+            const resolvedNodePath = resolveIdToPath(op.node_id, 'node');
+            if (op.node_path && op.node_path !== resolvedNodePath) {
+              throw new Error(
+                `node_id ${op.node_id} resolves to ${resolvedNodePath}, but node_path was ${op.node_path}`,
+              );
+            }
+            nodePath = resolvedNodePath;
+            const parentPath = nodePath.substring(0, nodePath.lastIndexOf('/'));
+            currentPathById.set(op.node_id, `${parentPath}/${op.new_name}`);
+          }
+          resolved.push({ op: 'rename_node', node_path: nodePath, new_name: op.new_name });
+          break;
+        }
+        case 'reparent_node': {
+          let nodePath = op.node_path ?? '';
+          let newParentPath = op.new_parent_path ?? '';
+          if (op.node_id) {
+            const resolvedNodePath = resolveIdToPath(op.node_id, 'node');
+            if (op.node_path && op.node_path !== resolvedNodePath) {
+              throw new Error(
+                `node_id ${op.node_id} resolves to ${resolvedNodePath}, but node_path was ${op.node_path}`,
+              );
+            }
+            nodePath = resolvedNodePath;
+          }
+          if (op.new_parent_id) {
+            const resolvedParentPath = resolveIdToPath(op.new_parent_id, 'new_parent');
+            if (op.new_parent_path && op.new_parent_path !== resolvedParentPath) {
+              throw new Error(
+                `new_parent_id ${op.new_parent_id} resolves to ${resolvedParentPath}, but new_parent_path was ${op.new_parent_path}`,
+              );
+            }
+            newParentPath = resolvedParentPath;
+          }
+          if (op.node_id && newParentPath) {
+            const nodeName = nodePath.split('/').pop()!;
+            currentPathById.set(op.node_id, `${newParentPath}/${nodeName}`);
+          }
+          resolved.push({
+            op: 'reparent_node',
+            node_path: nodePath,
+            new_parent_path: newParentPath,
+            keep_global_transform: op.keep_global_transform,
+            index: op.index,
+          });
+          break;
+        }
+      }
+    }
+
+    return resolved;
+  };
 
   return [
   {
@@ -199,6 +439,7 @@ export function createSceneTools(getConnection: GetConnection = getGodotConnecti
         z.object({
           op: z.literal('create_node'),
           parent_path: z.string().optional().describe('Parent node path (default: "/root")'),
+          parent_id: z.string().optional().describe('Parent node id (preferred over parent_path)'),
           node_type: z.string().optional().describe('Node type to create (default: "Node")'),
           node_name: z.string().describe('Name for the new node'),
           properties: z.record(z.any()).optional().describe('Optional properties to set after creation'),
@@ -206,23 +447,28 @@ export function createSceneTools(getConnection: GetConnection = getGodotConnecti
         }),
         z.object({
           op: z.literal('delete_node'),
-          node_path: z.string().describe('Path to the node to delete'),
+          node_path: z.string().optional().describe('Path to the node to delete'),
+          node_id: z.string().optional().describe('Stable node id from get_edited_scene_structure'),
         }),
         z.object({
           op: z.literal('set_property'),
-          node_path: z.string().describe('Path to the node to edit'),
+          node_path: z.string().optional().describe('Path to the node to edit'),
+          node_id: z.string().optional().describe('Stable node id from get_edited_scene_structure'),
           property: z.string().describe('Property name to set'),
           value: z.any().describe('New value for the property'),
         }),
         z.object({
           op: z.literal('rename_node'),
-          node_path: z.string().describe('Path to the node to rename'),
+          node_path: z.string().optional().describe('Path to the node to rename'),
+          node_id: z.string().optional().describe('Stable node id from get_edited_scene_structure'),
           new_name: z.string().describe('New node name'),
         }),
         z.object({
           op: z.literal('reparent_node'),
-          node_path: z.string().describe('Path to the node to move'),
-          new_parent_path: z.string().describe('New parent node path'),
+          node_path: z.string().optional().describe('Path to the node to move'),
+          node_id: z.string().optional().describe('Stable node id from get_edited_scene_structure'),
+          new_parent_path: z.string().optional().describe('New parent node path'),
+          new_parent_id: z.string().optional().describe('Stable node id for the new parent'),
           keep_global_transform: z.boolean().optional().describe('Preserve global transform while reparenting'),
           index: z.number().int().nonnegative().optional().describe('Optional child index under new parent'),
         }),
@@ -233,7 +479,11 @@ export function createSceneTools(getConnection: GetConnection = getGodotConnecti
       const godot = getConnection();
 
       try {
-        const result = await godot.sendCommand<CommandResult>('apply_scene_patch', { operations, strict });
+        const resolvedOperations = await resolveScenePatchOperations(godot, operations);
+        const result = await godot.sendCommand<CommandResult>('apply_scene_patch', {
+          operations: resolvedOperations,
+          strict,
+        });
         const errors: string[] = Array.isArray(result.errors) ? result.errors : [];
         let msg = `Applied ${result.applied}/${result.total} operations`;
         if (errors.length) msg += ` (${errors.length} errors)`;

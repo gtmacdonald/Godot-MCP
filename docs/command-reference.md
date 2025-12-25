@@ -231,11 +231,13 @@ Apply a sequence of node operations to the currently edited scene (intended as a
 - `strict` (optional) - Stop on first error (default: true)
 
 **Supported operations:**
-- `create_node` (`parent_path`, `node_type`, `node_name`, `properties?`)
-- `delete_node` (`node_path`)
-- `set_property` (`node_path`, `property`, `value`)
-- `rename_node` (`node_path`, `new_name`)
-- `reparent_node` (`node_path`, `new_parent_path`, `keep_global_transform?`, `index?`)
+- `create_node` (`parent_path?`, `parent_id?`, `node_type`, `node_name`, `properties?`)
+- `delete_node` (`node_path?`, `node_id?`)
+- `set_property` (`node_path?`, `node_id?`, `property`, `value`)
+- `rename_node` (`node_path?`, `node_id?`, `new_name`)
+- `reparent_node` (`node_path?`, `node_id?`, `new_parent_path?`, `new_parent_id?`, `keep_global_transform?`, `index?`)
+
+If you provide both an `*_id` and a path, the server will validate they resolve to the same node.
 
 ### generate_scene_patch
 Generate an `apply_scene_patch` operation list by diffing the currently edited scene against a desired tree.
@@ -254,6 +256,79 @@ When `diff_properties` is enabled, the server requests a lightweight property sn
 For reliable moves/renames across parents, include stable `id` values from `get_edited_scene_structure` in your desired tree. The server requests Godot to ensure IDs are present (`ensure_ids: true`).
 
 IDs are persisted by adding the node to a persistent group named `godot_mcp_id:<id>` (stored in the `.tscn`), so they remain stable across editor restarts and scene reloads.
+
+### ID workflow example
+
+Use this flow when you want changes to survive renames/reparents without relying on brittle paths.
+
+1. Read the edited scene snapshot (includes IDs):
+   ```
+   @mcp godot-mcp read godot/scene/edited
+   ```
+2. Build your desired tree using the returned `structure.id` and `children[].id` values:
+   ```json
+   {
+     "desired": {
+       "children": [
+         {
+           "id": "25827803-3664402523-2537788876286",
+           "name": "Gameplay",
+           "type": "Node3D",
+           "children": [
+             {
+               "id": "25827846-4186853086-2537839221429",
+               "name": "Player",
+               "type": "CSGBox3D",
+               "properties": {
+                 "position": "Vector3(1, 0, 0)"
+               }
+             }
+           ]
+         }
+       ]
+     }
+   }
+   ```
+3. Generate and apply a patch:
+   ```
+   @mcp godot-mcp call generate_scene_patch {"desired":{"children":[{"id":"25827803-3664402523-2537788876286","name":"Gameplay","type":"Node3D","children":[{"id":"25827846-4186853086-2537839221429","name":"Player","type":"CSGBox3D","properties":{"position":"Vector3(1, 0, 0)"}}]}]},"apply":true}
+   ```
+
+If you need properties for diffing, request them up front:
+```
+@mcp godot-mcp read godot/scene/edited/position,rotation,scale
+```
+
+### Patch by ID walkthrough
+
+**Before** (edited snapshot, abbreviated):
+```json
+{
+  "structure": {
+    "id": "root-1",
+    "path": "/root",
+    "children": [
+      { "id": "node-1", "name": "Player", "path": "/root/Player" },
+      { "id": "node-2", "name": "UI", "path": "/root/UI" }
+    ]
+  }
+}
+```
+
+**Goal**: Rename `Player` to `Hero` and move it under `UI` without depending on paths.
+
+**Patch** (ID-addressed):
+```json
+[
+  { "op": "rename_node", "node_id": "node-1", "new_name": "Hero" },
+  { "op": "reparent_node", "node_id": "node-1", "new_parent_id": "node-2" }
+]
+```
+
+**Call**:
+```
+@mcp godot-mcp call apply_scene_patch {"operations":[{"op":"rename_node","node_id":"node-1","new_name":"Hero"},{"op":"reparent_node","node_id":"node-1","new_parent_id":"node-2"}]}
+```
 
 ## Editor Tools
 
