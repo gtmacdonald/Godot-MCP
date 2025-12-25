@@ -4,7 +4,7 @@ extends MCPBaseCommandProcessor
 
 const MCP_ID_GROUP_PREFIX := "godot_mcp_id:"
 
-func process_command(client_id: int, command_type: String, params: Dictionary, command_id: String) -> bool:
+func process_command(client_id: int, agent_id: String, command_type: String, params: Dictionary, command_id: String) -> bool:
 	match command_type:
 		"get_edited_scene_structure":
 			_get_edited_scene_structure(client_id, params, command_id)

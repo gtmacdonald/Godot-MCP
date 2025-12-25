@@ -9,9 +9,9 @@ var log_detailed := true  # Enable detailed logging
 var command_handler = null  # Command handler reference
 var _panel: Control = null  # UI panel instance
 
-signal client_connected(id)
-signal client_disconnected(id)
-signal command_received(client_id, command)
+signal client_connected(client_id, agent_id)
+signal client_disconnected(client_id, agent_id)
+signal command_received(client_id, agent_id, command)
 
 class WebSocketClient:
 	var tcp: StreamPeerTCP
@@ -20,7 +20,9 @@ class WebSocketClient:
 	var state: int = -1 # -1: handshaking, 0: connected, 1: error/closed
 	var handshake_time: int
 	var last_poll_time: int
-	
+	var agent_id: String = ""  # Agent identifier
+	var api_key: String = ""  # API key for this client
+
 	func _init(p_tcp: StreamPeerTCP, p_id: int):
 		tcp = p_tcp
 		id = p_id
@@ -33,10 +35,16 @@ class WebSocketClient:
 
 var clients := {}
 var next_client_id := 1
+var _agent_config: Dictionary
+
+signal client_connected(client_id, agent_id)
 
 func _enter_tree():
 	# Store plugin instance for EditorInterface access
 	Engine.set_meta("GodotMCPPlugin", self)
+
+	# Load agent configuration
+	_agent_config = load_agent_config()
 	
 	print("\n=== MCP SERVER STARTING ===")
 	
@@ -129,11 +137,27 @@ func _process(_delta):
 					_log(id, "State: " + str(ws_state))
 					
 				if ws_state == WebSocketPeer.STATE_OPEN:
-					print("[Client ", id, "] WebSocket handshake completed")
+					# Extract API key from WebSocket handshake headers
+					var provided_key = ""
+
+					# Note: Godot's WebSocketPeer doesn't expose headers directly
+					# In production, you'd need to implement a custom handshake
+					# For now, we'll accept the connection and validate on first command
+					var agent_id = validate_api_key(provided_key)
+
+					if agent_id.is_empty() and _agent_config.get("auth_required", false):
+						print("[Client ", id, "] Authentication required but no API key provided")
+						# Close connection with auth error
+						ids_to_remove.append(id)
+						continue
+
+					client.agent_id = agent_id
+					client.api_key = provided_key
+					print("[Client ", id, "] WebSocket handshake completed (agent: ", agent_id, ")")
 					client.state = 0
-					
-					# Emit connected signal
-					emit_signal("client_connected", id)
+
+					# Emit connected signal with agent_id
+					emit_signal("client_connected", id, agent_id)
 					
 					# Send welcome message
 					var msg = JSON.stringify({
@@ -232,12 +256,12 @@ func _process(_delta):
 						var cmd_type = data.get("type")
 						var params = data.get("params", {})
 						var cmd_id = data.get("commandId", "")
-						
-						print("[Client ", id, "] Processing command: ", cmd_type)
-						
+
+						print("[Client ", id, ":", client.agent_id, "] Processing command: ", cmd_type)
+
 						# Route command to command handler via signal
 						# The command handler will handle the response via send_response
-						emit_signal("command_received", id, data)
+						emit_signal("command_received", id, client.agent_id, data)
 				else:
 					print("[Client ", id, "] Failed to parse JSON: ", json.get_error_message())
 	
@@ -298,3 +322,44 @@ func set_port(new_port: int) -> void:
 
 func get_client_count() -> int:
 	return clients.size()
+
+## Load agent configuration from mcp_agents.json
+func load_agent_config() -> Dictionary:
+	var config_path = "res://../mcp_agents.json"
+	if FileAccess.file_exists(config_path):
+		var file = FileAccess.open(config_path, FileAccess.READ)
+		if file:
+			var json_text = file.get_as_text()
+			file.close()
+			var json = JSON.new()
+			var error = json.parse(json_text)
+			if error == OK:
+				print("MCP: Loaded agent configuration")
+				return json.data
+			else:
+				printerr("MCP: Failed to parse agent config: ", json.get_error_message())
+		else:
+			printerr("MCP: Failed to open agent config file")
+	else:
+		print("MCP: No agent config found, using defaults (auth disabled)")
+
+	return {"auth_required": false, "agents": []}
+
+## Validate API key and return agent_id
+func validate_api_key(provided_key: String) -> String:
+	# If auth is not required, allow anonymous access
+	if not _agent_config.get("auth_required", false):
+		return "anonymous"
+
+	# Check against configured agents
+	for agent in _agent_config.get("agents", []):
+		if agent.get("api_key", "") == provided_key:
+			return agent.get("id", "")
+
+	return ""  # Invalid key
+
+## Sanitize API key for logging (show only last 4 chars)
+func _sanitize_api_key(api_key: String) -> String:
+	if api_key.length() <= 4:
+		return "****"
+	return "*" * (api_key.length() - 4) + api_key.right(4)

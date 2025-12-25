@@ -48,6 +48,7 @@ import { nodeTools } from './tools/node_tools.js';
 import { scriptTools } from './tools/script_tools.js';
 import { sceneTools } from './tools/scene_tools.js';
 import { editorTools } from './tools/editor_tools.js';
+import { assetTools } from './tools/asset_tools.js';
 import { getGodotConnection } from './utils/godot_connection.js';
 // Import resources
 import { sceneListResource, sceneStructureResource, sceneContentTemplate, sceneStructureTemplate, editedSceneStructureResource, editedSceneStructureTemplate } from './resources/scene_resources.js';
@@ -67,7 +68,7 @@ function main() {
                 version: '1.0.0',
             });
             // Register all tools
-            __spreadArray(__spreadArray(__spreadArray(__spreadArray([], nodeTools, true), scriptTools, true), sceneTools, true), editorTools, true).forEach(function (tool) {
+            __spreadArray(__spreadArray(__spreadArray(__spreadArray(__spreadArray([], nodeTools, true), scriptTools, true), sceneTools, true), editorTools, true), assetTools, true).forEach(function (tool) {
                 server.addTool(tool);
             });
             // Register all resources

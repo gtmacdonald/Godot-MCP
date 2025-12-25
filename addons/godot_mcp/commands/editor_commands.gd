@@ -2,7 +2,7 @@
 class_name MCPEditorCommands
 extends MCPBaseCommandProcessor
 
-func process_command(client_id: int, command_type: String, params: Dictionary, command_id: String) -> bool:
+func process_command(client_id: int, agent_id: String, command_type: String, params: Dictionary, command_id: String) -> bool:
 	match command_type:
 		"get_editor_state":
 			_get_editor_state(client_id, params, command_id)

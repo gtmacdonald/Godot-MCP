@@ -1,0 +1,17 @@
+{
+  "auth_required": false,
+  "agents": [
+    {
+      "id": "agent-001",
+      "name": "Primary Development Agent",
+      "api_key": "sk_agent_primary_dev_key_001",
+      "permissions": ["read", "write", "delete"]
+    },
+    {
+      "id": "agent-002",
+      "name": "Secondary Development Agent",
+      "api_key": "sk_agent_secondary_dev_key_002",
+      "permissions": ["read", "write"]
+    }
+  ]
+}

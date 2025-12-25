@@ -2,7 +2,7 @@
 class_name MCPProjectCommands
 extends MCPBaseCommandProcessor
 
-func process_command(client_id: int, command_type: String, params: Dictionary, command_id: String) -> bool:
+func process_command(client_id: int, agent_id: String, command_type: String, params: Dictionary, command_id: String) -> bool:
 	match command_type:
 		"get_project_info":
 			_get_project_info(client_id, params, command_id)

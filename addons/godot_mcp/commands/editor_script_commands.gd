@@ -2,7 +2,7 @@
 class_name MCPEditorScriptCommands
 extends MCPBaseCommandProcessor
 
-func process_command(client_id: int, command_type: String, params: Dictionary, command_id: String) -> bool:
+func process_command(client_id: int, agent_id: String, command_type: String, params: Dictionary, command_id: String) -> bool:
 	match command_type:
 		"execute_editor_script":
 			_execute_editor_script(client_id, params, command_id)

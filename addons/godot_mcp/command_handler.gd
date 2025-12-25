@@ -20,47 +20,51 @@ func _initialize_command_processors():
 	# Create and add all command processors
 	var node_commands = MCPNodeCommands.new()
 	var script_commands = MCPScriptCommands.new()
-	var scene_commands = MCPSceneCommands.new() 
+	var scene_commands = MCPSceneCommands.new()
 	var project_commands = MCPProjectCommands.new()
 	var editor_commands = MCPEditorCommands.new()
-	var editor_script_commands = MCPEditorScriptCommands.new()  # Add our new processor
-	
+	var editor_script_commands = MCPEditorScriptCommands.new()
+	var asset_commands = MCPAssetCommands.new()
+
 	# Set server reference for all processors
 	node_commands._websocket_server = _websocket_server
 	script_commands._websocket_server = _websocket_server
 	scene_commands._websocket_server = _websocket_server
 	project_commands._websocket_server = _websocket_server
 	editor_commands._websocket_server = _websocket_server
-	editor_script_commands._websocket_server = _websocket_server  # Set server reference
-	
+	editor_script_commands._websocket_server = _websocket_server
+	asset_commands._websocket_server = _websocket_server
+
 	# Add them to our processor list
 	_command_processors.append(node_commands)
 	_command_processors.append(script_commands)
 	_command_processors.append(scene_commands)
 	_command_processors.append(project_commands)
 	_command_processors.append(editor_commands)
-	_command_processors.append(editor_script_commands)  # Add to processor list
-	
+	_command_processors.append(editor_script_commands)
+	_command_processors.append(asset_commands)
+
 	# Add them as children for proper lifecycle management
 	add_child(node_commands)
 	add_child(script_commands)
 	add_child(scene_commands)
 	add_child(project_commands)
 	add_child(editor_commands)
-	add_child(editor_script_commands)  # Add as child
+	add_child(editor_script_commands)
+	add_child(asset_commands)
 
-func _handle_command(client_id: int, command: Dictionary) -> void:
+func _handle_command(client_id: int, agent_id: String, command: Dictionary) -> void:
 	var command_type = command.get("type", "")
 	var params = command.get("params", {})
 	var command_id = command.get("commandId", "")
-	
-	print("Processing command: %s" % command_type)
-	
+
+	print("Processing command: %s from agent: %s" % [command_type, agent_id])
+
 	# Try each processor until one handles the command
 	for processor in _command_processors:
-		if processor.process_command(client_id, command_type, params, command_id):
+		if processor.process_command(client_id, agent_id, command_type, params, command_id):
 			return
-	
+
 	# If no processor handled the command, send an error
 	_send_error(client_id, "Unknown command: %s" % command_type, command_id)
 

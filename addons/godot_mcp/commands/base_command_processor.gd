@@ -9,7 +9,7 @@ signal command_completed(client_id, command_type, result, command_id)
 var _websocket_server = null
 
 # Must be implemented by subclasses
-func process_command(client_id: int, command_type: String, params: Dictionary, command_id: String) -> bool:
+func process_command(client_id: int, agent_id: String, command_type: String, params: Dictionary, command_id: String) -> bool:
 	push_error("BaseCommandProcessor.process_command called directly")
 	return false
 

@@ -26,27 +26,32 @@ export class GodotConnection {
   private ws: WebSocket | null = null;
   private connected = false;
   private mockMode = false;
-  private commandQueue: Map<string, { 
+  private agentId: string = '';
+  private apiKey: string = '';
+  private commandQueue: Map<string, {
     resolve: (value: any) => void;
     reject: (reason: any) => void;
     timeout: NodeJS.Timeout;
   }> = new Map();
   private commandId = 0;
-  
+
   /**
    * Creates a new Godot connection
    * @param url WebSocket URL for the Godot server
    * @param timeout Command timeout in ms
    * @param maxRetries Maximum number of connection retries
    * @param retryDelay Delay between retries in ms
+   * @param apiKey Optional API key for agent authentication
    */
   constructor(
     private url: string = 'ws://localhost:9080',
     private timeout: number = 20000,
     private maxRetries: number = 3,
-    private retryDelay: number = 2000
+    private retryDelay: number = 2000,
+    apiKey?: string
   ) {
     this.mockMode = this.url.startsWith('mock://');
+    this.apiKey = apiKey || process.env.GODOT_MCP_API_KEY || '';
     console.error('GodotConnection created with URL:', this.url);
   }
 
@@ -140,7 +145,10 @@ export class GodotConnection {
         this.ws = new WebSocket(this.url, {
           protocol: 'json',
           handshakeTimeout: 8000,  // Increase handshake timeout
-          perMessageDeflate: false // Disable compression for compatibility
+          perMessageDeflate: false, // Disable compression for compatibility
+          headers: {
+            'X-API-Key': this.apiKey  // Send API key in handshake header
+          }
         });
         
         this.ws.on('open', () => {
@@ -324,11 +332,13 @@ let connectionInstance: GodotConnection | null = null;
 
 /**
  * Gets the singleton instance of GodotConnection
+ * @param apiKey Optional API key for authentication
  */
-export function getGodotConnection(): GodotConnection {
+export function getGodotConnection(apiKey?: string): GodotConnection {
   if (!connectionInstance) {
     const url = process.env.GODOT_WS_URL || 'ws://localhost:9080';
-    connectionInstance = new GodotConnection(url);
+    const key = apiKey || process.env.GODOT_MCP_API_KEY || '';
+    connectionInstance = new GodotConnection(url, 20000, 3, 2000, key);
   }
   return connectionInstance;
 }
