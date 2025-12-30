@@ -5,6 +5,7 @@ import { sceneTools } from './tools/scene_tools.js';
 import { editorTools } from './tools/editor_tools.js';
 import { assetTools } from './tools/asset_tools.js';
 import { gameTools } from './tools/game_tools.js';
+import { logTools } from './tools/log_tools.js';
 import { getGodotConnection } from './utils/godot_connection.js';
 
 // Import resources
@@ -48,7 +49,7 @@ async function main() {
   });
 
   // Register all tools
-  [...nodeTools, ...scriptTools, ...sceneTools, ...editorTools, ...assetTools, ...gameTools].forEach(tool => {
+  [...nodeTools, ...scriptTools, ...sceneTools, ...editorTools, ...assetTools, ...gameTools, ...logTools].forEach(tool => {
     server.addTool(tool);
   });
 
